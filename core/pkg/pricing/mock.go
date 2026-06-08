@@ -58,6 +58,15 @@ func NewMockPricingRepository() (*MockPricingRepository, error) {
 	return repo, nil
 }
 
+func (repo *MockPricingRepository) Checksum() (string, error) {
+	temp := &PricingSet{
+		Nodes:   repo.NodePricing,
+		Volumes: repo.VolumePricing,
+	}
+
+	return temp.Checksum()
+}
+
 func (repo *MockPricingRepository) NewNodePricingReader(ctx context.Context) (reader.Reader[*NodePricing], error) {
 	return reader.NewSliceReader(repo.NodePricing), nil
 }

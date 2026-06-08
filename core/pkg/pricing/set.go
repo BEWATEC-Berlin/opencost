@@ -1,8 +1,12 @@
 package pricing
 
 import (
+	"encoding/hex"
+	"fmt"
+	"hash/fnv"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/opencost/opencost/core/pkg/unit"
 )
@@ -18,6 +22,29 @@ func (ps *PricingSet) IsEmpty() bool {
 	}
 
 	return len(ps.Nodes) == 0 && len(ps.Volumes) == 0
+}
+
+func (ps *PricingSet) Checksum() (string, error) {
+	slices.SortFunc(ps.Nodes, func(npa, npb *NodePricing) int {
+		return strings.Compare(npa.String(), npb.String())
+	})
+
+	builder := strings.Builder{}
+
+	for _, np := range ps.Nodes {
+		_, err := builder.WriteString(np.String())
+		if err != nil {
+			return "", fmt.Errorf("building string: %w", err)
+		}
+	}
+
+	hasher := fnv.New64a()
+	_, err := hasher.Write([]byte(builder.String()))
+	if err != nil {
+		return "", fmt.Errorf("fnv hash: %w", err)
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func (ps *PricingSet) Currencies() []unit.Currency {

@@ -9,6 +9,8 @@ import (
 type PricingRepository interface {
 	NodePricingRepository
 	VolumePricingRepository
+
+	Checksum() (string, error)
 }
 
 // TODO: add the following function for Opencost pricing
