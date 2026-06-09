@@ -9,15 +9,15 @@ import (
 	"github.com/opencost/opencost/core/pkg/reader"
 )
 
-func TestMockPricingRepository(t *testing.T) {
-	var repo PricingRepository
+func TestMockPricingModule(t *testing.T) {
+	var source PricingSource
 
-	mockRepo, err := NewMockPricingRepository()
+	pricingModule, err := NewMockPricingModule()
 	if err != nil {
 		t.Fatalf("unexpected error initializing mock repository: %s", err)
 	}
 
-	repo = mockRepo
+	source = pricingModule
 
 	// Simple example of a sink for pricing data (will be database tables in reality)
 	bufferSize := 10
@@ -25,7 +25,7 @@ func TestMockPricingRepository(t *testing.T) {
 
 	// Test ingestion of mock node reader
 
-	nodePricingReader, err := repo.NewNodePricingReader(t.Context())
+	nodePricingReader, err := source.NewNodePricingReader(t.Context())
 	if err != nil {
 		t.Errorf("unexpected error initializing node reader: %s", err)
 	}
@@ -45,7 +45,7 @@ func TestMockPricingRepository(t *testing.T) {
 
 	// Test ingestion of mock volume reader
 
-	volumePricingReader, err := repo.NewVolumePricingReader(t.Context())
+	volumePricingReader, err := source.NewVolumePricingReader(t.Context())
 	if err != nil {
 		t.Errorf("unexpected error initializing volume reader: %s", err)
 	}

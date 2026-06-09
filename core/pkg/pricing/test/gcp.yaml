@@ -6,10 +6,12 @@ nodes:
       USD:
         - price: 0.031611
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.004237
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       provisioning: spot
@@ -17,10 +19,12 @@ nodes:
       USD:
         - price: 0.006655
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.000892
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -30,10 +34,12 @@ nodes:
       USD:
         - price: 0.031611
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.004237
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -43,10 +49,12 @@ nodes:
       USD:
         - price: 0.009483
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.001271
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -56,10 +64,12 @@ nodes:
       USD:
         - price: 0.031611
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.004237
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -69,10 +79,12 @@ nodes:
       USD:
         - price: 0.009483
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.001271
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -82,10 +94,12 @@ nodes:
       USD:
         - price: 0.031611
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.004237
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -95,10 +109,12 @@ nodes:
       USD:
         - price: 0.009483
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.001271
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -108,10 +124,12 @@ nodes:
       USD:
         - price: 0.033646
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.004511
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -121,10 +139,12 @@ nodes:
       USD:
         - price: 0.010094
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.001353
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -134,10 +154,12 @@ nodes:
       USD:
         - price: 0.033646
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.004511
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -147,10 +169,12 @@ nodes:
       USD:
         - price: 0.010094
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.001353
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -160,10 +184,12 @@ nodes:
       USD:
         - price: 0.033646
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.004511
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -173,17 +199,20 @@ nodes:
       USD:
         - price: 0.010094
           currency: USD
+          resource: cpu
           unit: vCPU-hr
         - price: 0.001353
           currency: USD
-          unit: RAM-GiB-hr
+          resource: ram
+          unit: GiB-hr
 volumes:
   - properties: {}
     prices:
       USD:
         - price: 0.0000581
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -192,7 +221,8 @@ volumes:
       USD:
         - price: 0.0002329
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -201,7 +231,8 @@ volumes:
       USD:
         - price: 0.000137
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-central1
@@ -210,7 +241,8 @@ volumes:
       USD:
         - price: 0.0000548
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -219,7 +251,8 @@ volumes:
       USD:
         - price: 0.0002466
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -228,7 +261,8 @@ volumes:
       USD:
         - price: 0.0001452
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: GCP
       region: us-west1
@@ -237,4 +271,5 @@ volumes:
       USD:
         - price: 0.0000581
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr

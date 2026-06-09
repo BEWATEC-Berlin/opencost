@@ -52,6 +52,44 @@ func NewBasicPricingModule(store pricing.PricingStore) (*PricingModule, error) {
 	return pm, nil
 }
 
+func (pm *PricingModule) Checksum(ctx context.Context) (string, error) {
+	pricingSet, err := pm.store.GetPricingSet(ctx)
+	if err != nil {
+		return "", fmt.Errorf("basic pricing module: error getting pricing set: %w", err)
+	}
+
+	checksum, err := pricingSet.Checksum()
+	if err != nil {
+		return "", fmt.Errorf("basic pricing module: error computing checksum: %s", err)
+	}
+
+	return checksum, nil
+}
+
+func (pm *PricingModule) GetPricingSet(ctx context.Context) (*pricing.PricingSet, error) {
+	return pm.store.GetPricingSet(ctx)
+}
+
+func (pm *PricingModule) SourceName() string {
+	return "basic"
+}
+
+func (pm *PricingModule) NewNodePricingReader(ctx context.Context) (reader.Reader[*pricing.NodePricing], error) {
+	np, err := pm.getNodePricing(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting node pricing: %w", err)
+	}
+	return reader.NewSliceReader([]*pricing.NodePricing{np}), nil
+}
+
+func (pm *PricingModule) NewVolumePricingReader(ctx context.Context) (reader.Reader[*pricing.VolumePricing], error) {
+	vp, err := pm.getVolumePricing(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting volume pricing: %w", err)
+	}
+	return reader.NewSliceReader([]*pricing.VolumePricing{vp}), nil
+}
+
 func (pm *PricingModule) GetCurrency() unit.Currency {
 	return pm.currency
 }
@@ -138,42 +176,26 @@ func (pm *PricingModule) SetCurrency(ctx context.Context, currency unit.Currency
 }
 
 func (pm *PricingModule) SetNodePricePerCPUCoreHour(ctx context.Context, price float64) error {
-	return pm.setNodePrice(ctx, unit.VCPUHour, price)
+	return pm.setNodePrice(ctx, pricing.ResourceCPU, unit.VCPUHour, price)
 }
 
 func (pm *PricingModule) SetNodePricePerRAMGiBHour(ctx context.Context, price float64) error {
-	return pm.setNodePrice(ctx, unit.RAMGiBHour, price)
+	return pm.setNodePrice(ctx, pricing.ResourceRAM, unit.GiBHour, price)
 }
 
 func (pm *PricingModule) SetNodePricePerGPUHour(ctx context.Context, price float64) error {
-	return pm.setNodePrice(ctx, unit.GPUHour, price)
+	return pm.setNodePrice(ctx, pricing.ResourceGPU, unit.GPUHour, price)
 }
 
 func (pm *PricingModule) SetNodePricePerLocalDiskGiBHour(ctx context.Context, price float64) error {
-	return pm.setNodePrice(ctx, unit.StorageGiBHour, price)
+	return pm.setNodePrice(ctx, pricing.ResourceStorage, unit.GiBHour, price)
 }
 
 func (pm *PricingModule) SetVolumePricePerStorageGiBHour(ctx context.Context, price float64) error {
-	return pm.setVolumePrice(ctx, unit.StorageGiBHour, price)
+	return pm.setVolumePrice(ctx, pricing.ResourceStorage, unit.GiBHour, price)
 }
 
-func (pm *PricingModule) NewNodePricingReader(ctx context.Context) (reader.Reader[*pricing.NodePricing], error) {
-	np, err := pm.getNodePricing(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting node pricing: %w", err)
-	}
-	return reader.NewSliceReader([]*pricing.NodePricing{np}), nil
-}
-
-func (pm *PricingModule) NewVolumePricingReader(ctx context.Context) (reader.Reader[*pricing.VolumePricing], error) {
-	vp, err := pm.getVolumePricing(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting volume pricing: %w", err)
-	}
-	return reader.NewSliceReader([]*pricing.VolumePricing{vp}), nil
-}
-
-func (pm *PricingModule) setNodePrice(ctx context.Context, unit unit.Unit, price float64) error {
+func (pm *PricingModule) setNodePrice(ctx context.Context, resource pricing.Resource, unit unit.Unit, price float64) error {
 	np, err := pm.getNodePricing(ctx)
 	if err != nil {
 		return fmt.Errorf("getting node pricing: %w", err)
@@ -189,7 +211,7 @@ func (pm *PricingModule) setNodePrice(ctx context.Context, unit unit.Unit, price
 
 	// Set the price with unit GiBHour to the given price
 	for i, p := range prices {
-		if p.Unit == unit {
+		if p.Resource == resource && p.Unit == unit {
 			prices[i] = pricing.Price{
 				Currency: p.Currency,
 				Unit:     p.Unit,
@@ -207,7 +229,7 @@ func (pm *PricingModule) setNodePrice(ctx context.Context, unit unit.Unit, price
 	return nil
 }
 
-func (pm *PricingModule) setVolumePrice(ctx context.Context, unit unit.Unit, price float64) error {
+func (pm *PricingModule) setVolumePrice(ctx context.Context, resource pricing.Resource, unit unit.Unit, price float64) error {
 	vp, err := pm.getVolumePricing(ctx)
 	if err != nil {
 		return fmt.Errorf("getting volume pricing: %w", err)
@@ -223,7 +245,7 @@ func (pm *PricingModule) setVolumePrice(ctx context.Context, unit unit.Unit, pri
 
 	// Set the price with unit GiBHour to the given price
 	for i, p := range prices {
-		if p.Unit == unit {
+		if p.Resource == resource && p.Unit == unit {
 			prices[i] = pricing.Price{
 				Currency: p.Currency,
 				Unit:     p.Unit,

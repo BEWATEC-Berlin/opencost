@@ -22,6 +22,7 @@ func TestGetPrices(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: Node,
 						Unit:     unit.Hour,
 						Price:    0.096,
 					},
@@ -34,12 +35,14 @@ func TestGetPrices(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
 					{
 						Currency: unit.USD,
-						Unit:     unit.RAMGiBHour,
+						Resource: RAM,
+						Unit:     unit.GiBHour,
 						Price:    0.004237,
 					},
 				},
@@ -51,24 +54,28 @@ func TestGetPrices(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
 					{
 						Currency: unit.USD,
-						Unit:     unit.RAMGiBHour,
+						Resource: RAM,
+						Unit:     unit.GiBHour,
 						Price:    0.004237,
 					},
 				},
 				unit.CNY: []Price{
 					{
 						Currency: unit.CNY,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    3.1611,
 					},
 					{
 						Currency: unit.CNY,
-						Unit:     unit.RAMGiBHour,
+						Resource: RAM,
+						Unit:     unit.GiBHour,
 						Price:    0.4237,
 					},
 				},
@@ -115,6 +122,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -131,6 +139,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -146,6 +155,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -153,6 +163,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -160,7 +171,8 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.GBP: []Price{
 					{
 						Currency: unit.GBP,
-						Unit:     unit.RAMGiBHour,
+						Resource: RAM,
+						Unit:     unit.GiBHour,
 						Price:    0.025,
 					},
 				},
@@ -175,6 +187,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -182,6 +195,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -250,6 +264,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -267,6 +282,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -284,6 +300,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.GBP: []Price{
 					{
 						Currency: unit.GBP,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.025,
 					},
@@ -300,6 +317,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -307,6 +325,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -324,6 +343,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
+						Resource: CPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},

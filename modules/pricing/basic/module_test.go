@@ -124,7 +124,7 @@ func testDefaultPricing(t *testing.T, ctx context.Context, pm *PricingModule) {
 			if price.Price != DefaultNodePricePerVCPUHour {
 				t.Errorf("Expected CPU price to be %f, got %f", DefaultNodePricePerVCPUHour, price.Price)
 			}
-		case unit.RAMGiBHour:
+		case unit.GiBHour:
 			foundRAM = true
 			if price.Price != DefaultNodePricePerRAMGiBHour {
 				t.Errorf("Expected RAM price to be %f, got %f", DefaultNodePricePerRAMGiBHour, price.Price)
@@ -164,7 +164,7 @@ func testDefaultPricing(t *testing.T, ctx context.Context, pm *PricingModule) {
 
 	foundVolume := false
 	for _, price := range volumePrices {
-		if price.Unit == unit.StorageGiBHour {
+		if price.Unit == unit.GiBHour {
 			foundVolume = true
 			if price.Price != DefaultVolumePricePerGiBHour {
 				t.Errorf("Expected volume price to be %f, got %f", DefaultVolumePricePerGiBHour, price.Price)
@@ -345,7 +345,7 @@ func testSetNodePricePerRAMGiBHour(t *testing.T, ctx context.Context, pm *Pricin
 
 	found := false
 	for _, price := range prices {
-		if price.Unit == unit.RAMGiBHour {
+		if price.Unit == unit.GiBHour {
 			found = true
 			if price.Price != newPrice {
 				t.Errorf("Expected RAM price to be %f, got %f", newPrice, price.Price)
@@ -415,7 +415,7 @@ func testSetNodePricePerLocalDiskGiBHour(t *testing.T, ctx context.Context, pm *
 
 	found := false
 	for _, price := range prices {
-		if price.Unit == unit.StorageGiBHour {
+		if price.Unit == unit.GiBHour {
 			found = true
 			if price.Price != newPrice {
 				t.Errorf("Expected local disk price to be %f, got %f", newPrice, price.Price)
@@ -450,7 +450,7 @@ func testSetVolumePricePerStorageGiBHour(t *testing.T, ctx context.Context, pm *
 
 	found := false
 	for _, price := range prices {
-		if price.Unit == unit.StorageGiBHour {
+		if price.Unit == unit.GiBHour {
 			found = true
 			if price.Price != newPrice {
 				t.Errorf("Expected volume storage price to be %f, got %f", newPrice, price.Price)

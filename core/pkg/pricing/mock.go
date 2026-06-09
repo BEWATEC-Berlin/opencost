@@ -12,13 +12,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type MockPricingRepository struct {
+type MockPricingModule struct {
 	NodePricing   []*NodePricing
 	VolumePricing []*VolumePricing
 }
 
-func NewMockPricingRepository() (*MockPricingRepository, error) {
-	repo := &MockPricingRepository{
+func NewMockPricingModule() (*MockPricingModule, error) {
+	mpm := &MockPricingModule{
 		NodePricing:   []*NodePricing{},
 		VolumePricing: []*VolumePricing{},
 	}
@@ -28,51 +28,64 @@ func NewMockPricingRepository() (*MockPricingRepository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error loading test default pricing: %w", err)
 	}
-	repo.NodePricing = append(repo.NodePricing, defaultPricingSet.Nodes...)
-	repo.VolumePricing = append(repo.VolumePricing, defaultPricingSet.Volumes...)
+	mpm.NodePricing = append(mpm.NodePricing, defaultPricingSet.Nodes...)
+	mpm.VolumePricing = append(mpm.VolumePricing, defaultPricingSet.Volumes...)
 
 	// AWS
 	awsPricingSet, err := loadTestFile("aws.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("error loading test AWS pricing: %w", err)
 	}
-	repo.NodePricing = append(repo.NodePricing, awsPricingSet.Nodes...)
-	repo.VolumePricing = append(repo.VolumePricing, awsPricingSet.Volumes...)
+	mpm.NodePricing = append(mpm.NodePricing, awsPricingSet.Nodes...)
+	mpm.VolumePricing = append(mpm.VolumePricing, awsPricingSet.Volumes...)
 
 	// Azure
 	azurePricingSet, err := loadTestFile("azure.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("error loading test Azure pricing: %w", err)
 	}
-	repo.NodePricing = append(repo.NodePricing, azurePricingSet.Nodes...)
-	repo.VolumePricing = append(repo.VolumePricing, azurePricingSet.Volumes...)
+	mpm.NodePricing = append(mpm.NodePricing, azurePricingSet.Nodes...)
+	mpm.VolumePricing = append(mpm.VolumePricing, azurePricingSet.Volumes...)
 
 	// GCP
 	gcpPricingSet, err := loadTestFile("gcp.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("error loading test GCP pricing: %w", err)
 	}
-	repo.NodePricing = append(repo.NodePricing, gcpPricingSet.Nodes...)
-	repo.VolumePricing = append(repo.VolumePricing, gcpPricingSet.Volumes...)
+	mpm.NodePricing = append(mpm.NodePricing, gcpPricingSet.Nodes...)
+	mpm.VolumePricing = append(mpm.VolumePricing, gcpPricingSet.Volumes...)
 
-	return repo, nil
+	return mpm, nil
 }
 
-func (repo *MockPricingRepository) Checksum() (string, error) {
-	temp := &PricingSet{
-		Nodes:   repo.NodePricing,
-		Volumes: repo.VolumePricing,
+func (mpm *MockPricingModule) Checksum(ctx context.Context) (string, error) {
+	ps, err := mpm.GetPricingSet(ctx)
+	if err != nil {
+		return "", fmt.Errorf("getting pricing set: %w", err)
 	}
 
-	return temp.Checksum()
+	return ps.Checksum()
 }
 
-func (repo *MockPricingRepository) NewNodePricingReader(ctx context.Context) (reader.Reader[*NodePricing], error) {
-	return reader.NewSliceReader(repo.NodePricing), nil
+func (mpm *MockPricingModule) GetPricingSet(ctx context.Context) (*PricingSet, error) {
+	ps := &PricingSet{
+		Nodes:   mpm.NodePricing,
+		Volumes: mpm.VolumePricing,
+	}
+
+	return ps, nil
 }
 
-func (repo *MockPricingRepository) NewVolumePricingReader(ctx context.Context) (reader.Reader[*VolumePricing], error) {
-	return reader.NewSliceReader(repo.VolumePricing), nil
+func (mpm *MockPricingModule) SourceName() string {
+	return "mock"
+}
+
+func (mpm *MockPricingModule) NewNodePricingReader(ctx context.Context) (reader.Reader[*NodePricing], error) {
+	return reader.NewSliceReader(mpm.NodePricing), nil
+}
+
+func (mpm *MockPricingModule) NewVolumePricingReader(ctx context.Context) (reader.Reader[*VolumePricing], error) {
+	return reader.NewSliceReader(mpm.VolumePricing), nil
 }
 
 //go:embed test/*

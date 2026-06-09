@@ -8,6 +8,7 @@ nodes:
       USD:
         - price: 0.096
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -18,6 +19,7 @@ nodes:
       USD:
         - price: 0.0288
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -28,6 +30,7 @@ nodes:
       USD:
         - price: 0.192
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -38,6 +41,7 @@ nodes:
       USD:
         - price: 0.0576
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -48,6 +52,7 @@ nodes:
       USD:
         - price: 0.126
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -58,6 +63,7 @@ nodes:
       USD:
         - price: 0.0378
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -68,6 +74,7 @@ nodes:
       USD:
         - price: 0.109
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -78,6 +85,7 @@ nodes:
       USD:
         - price: 0.0327
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -88,6 +96,7 @@ nodes:
       USD:
         - price: 0.218
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -98,6 +107,7 @@ nodes:
       USD:
         - price: 0.0654
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -108,6 +118,7 @@ nodes:
       USD:
         - price: 0.143
           currency: USD
+          resource: node
           unit: hr
   - properties:
       provider: Azure
@@ -118,6 +129,7 @@ nodes:
       USD:
         - price: 0.0429
           currency: USD
+          resource: node
           unit: hr
 volumes:
   - properties:
@@ -128,7 +140,8 @@ volumes:
       USD:
         - price: 0.0002192
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: Azure
       region: eastus
@@ -137,7 +150,8 @@ volumes:
       USD:
         - price: 0.0001096
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: Azure
       region: eastus
@@ -146,7 +160,8 @@ volumes:
       USD:
         - price: 0.0000685
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: Azure
       region: westus2
@@ -155,7 +170,8 @@ volumes:
       USD:
         - price: 0.0002466
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: Azure
       region: westus2
@@ -164,7 +180,8 @@ volumes:
       USD:
         - price: 0.0001233
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr
   - properties:
       provider: Azure
       region: westus2
@@ -173,4 +190,5 @@ volumes:
       USD:
         - price: 0.0000767
           currency: USD
-          unit: storage-GiB-hr
+          resource: storage
+          unit: GiB-hr

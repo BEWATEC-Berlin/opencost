@@ -26,22 +26,26 @@ func GetDefaultNodePricing() *pricing.NodePricing {
 			unit.USD: []pricing.Price{
 				{
 					Currency: unit.USD,
+					Resource: pricing.ResourceCPU,
 					Unit:     unit.VCPUHour,
 					Price:    DefaultNodePricePerVCPUHour,
 				},
 				{
 					Currency: unit.USD,
-					Unit:     unit.RAMGiBHour,
+					Resource: pricing.ResourceRAM,
+					Unit:     unit.GiBHour,
 					Price:    DefaultNodePricePerRAMGiBHour,
 				},
 				{
 					Currency: unit.USD,
+					Resource: pricing.ResourceGPU,
 					Unit:     unit.GPUHour,
 					Price:    DefaultNodePricePerGPUHour,
 				},
 				{
 					Currency: unit.USD,
-					Unit:     unit.StorageGiBHour,
+					Resource: pricing.ResourceStorage,
+					Unit:     unit.GiBHour,
 					Price:    DefaultNodePricePerLocalDiskGiBHour,
 				},
 			},
@@ -56,7 +60,8 @@ func GetDefaultVolumePricing() *pricing.VolumePricing {
 			unit.USD: []pricing.Price{
 				{
 					Currency: unit.USD,
-					Unit:     unit.StorageGiBHour,
+					Resource: pricing.ResourceStorage,
+					Unit:     unit.GiBHour,
 					Price:    DefaultVolumePricePerGiBHour,
 				},
 			},

@@ -9,8 +9,9 @@ import (
 var NotFound = errors.New("Not found")
 
 type Price struct {
-	Currency unit.Currency `json:"currency" yaml:"currency"`
+	Resource Resource      `json:"resource" yaml:"resource"`
 	Unit     unit.Unit     `json:"unit" yaml:"unit"`
+	Currency unit.Currency `json:"currency" yaml:"currency"`
 	Price    float64       `json:"price" yaml:"price"`
 }
 
