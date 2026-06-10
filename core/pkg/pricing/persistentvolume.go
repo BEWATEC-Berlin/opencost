@@ -11,12 +11,12 @@ import (
 	"github.com/opencost/opencost/core/pkg/unit"
 )
 
-type VolumePricing struct {
-	Properties VolumePricingProperties `json:"properties" yaml:"properties"`
-	Prices     Prices                  `json:"prices" yaml:"pricing"`
+type PersistentVolumePricing struct {
+	Properties PersistentVolumePricingProperties `json:"properties" yaml:"properties"`
+	Prices     Prices                            `json:"prices" yaml:"pricing"`
 }
 
-func (vp *VolumePricing) GetCurrencies() []unit.Currency {
+func (vp *PersistentVolumePricing) GetCurrencies() []unit.Currency {
 	currencies := map[unit.Currency]struct{}{}
 
 	for currency := range vp.Prices {
@@ -27,11 +27,11 @@ func (vp *VolumePricing) GetCurrencies() []unit.Currency {
 }
 
 // TODO this actually has to have price too.... ugh
-func (vp *VolumePricing) String() string {
+func (vp *PersistentVolumePricing) String() string {
 	return vp.Properties.String()
 }
 
-type VolumePricingProperties struct {
+type PersistentVolumePricingProperties struct {
 	Provider   Provider          `json:"provider,omitempty" yaml:"provider,omitempty"`
 	Region     string            `json:"region,omitempty" yaml:"region,omitempty"`
 	VolumeType VolumeType        `json:"volumeType,omitempty" yaml:"volumeType,omitempty"`
@@ -43,7 +43,7 @@ type VolumePricingProperties struct {
 }
 
 // TODO: precompute this somewhere along the way?
-func (vp *VolumePricingProperties) String() string {
+func (vp *PersistentVolumePricingProperties) String() string {
 	return fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s",
 		vp.Provider,
 		vp.Region,
@@ -55,7 +55,7 @@ func (vp *VolumePricingProperties) String() string {
 	)
 }
 
-func (vp *VolumePricingProperties) labelsKey() string {
+func (vp *PersistentVolumePricingProperties) labelsKey() string {
 	if len(vp.Labels) == 0 {
 		return ""
 	}
@@ -80,7 +80,7 @@ func (vp *VolumePricingProperties) labelsKey() string {
 	return b.String()
 }
 
-func (vp *VolumePricingProperties) timeKey() string {
+func (vp *PersistentVolumePricingProperties) timeKey() string {
 	s := "nil"
 	e := "nil"
 

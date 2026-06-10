@@ -12,8 +12,8 @@ import (
 )
 
 type PricingSet struct {
-	Nodes   []*NodePricing   `json:"nodes" yaml:"nodes"`
-	Volumes []*VolumePricing `json:"volumes" yaml:"volumes"`
+	Nodes   []*NodePricing             `json:"nodes" yaml:"nodes"`
+	Volumes []*PersistentVolumePricing `json:"volumes" yaml:"volumes"`
 }
 
 func (ps *PricingSet) IsEmpty() bool {

@@ -45,7 +45,7 @@ func TestMockPricingModule(t *testing.T) {
 
 	// Test ingestion of mock volume reader
 
-	volumePricingReader, err := source.NewVolumePricingReader(t.Context())
+	volumePricingReader, err := source.NewPersistentVolumePricingReader(t.Context())
 	if err != nil {
 		t.Errorf("unexpected error initializing volume reader: %s", err)
 	}
@@ -67,7 +67,7 @@ func TestMockPricingModule(t *testing.T) {
 type mockPricingIngestor struct {
 	bufferSize    int
 	nodePricing   []*NodePricing
-	volumePricing []*VolumePricing
+	volumePricing []*PersistentVolumePricing
 }
 
 func newMockIngestor(bufferSize int) *mockPricingIngestor {
@@ -78,7 +78,7 @@ func newMockIngestor(bufferSize int) *mockPricingIngestor {
 	return &mockPricingIngestor{
 		bufferSize:    bufferSize,
 		nodePricing:   []*NodePricing{},
-		volumePricing: []*VolumePricing{},
+		volumePricing: []*PersistentVolumePricing{},
 	}
 }
 
@@ -118,10 +118,10 @@ func (ing *mockPricingIngestor) CountVolumePricing() int {
 	return len(ing.volumePricing)
 }
 
-func (ing *mockPricingIngestor) IngestVolumePricing(ctx context.Context, pricingReader reader.Reader[*VolumePricing]) (int, error) {
+func (ing *mockPricingIngestor) IngestVolumePricing(ctx context.Context, pricingReader reader.Reader[*PersistentVolumePricing]) (int, error) {
 	defer pricingReader.Close()
 
-	volBuf := make([]*VolumePricing, ing.bufferSize)
+	volBuf := make([]*PersistentVolumePricing, ing.bufferSize)
 
 	totalCount := 0
 

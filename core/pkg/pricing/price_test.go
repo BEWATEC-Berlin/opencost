@@ -22,7 +22,7 @@ func TestGetPrices(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: Node,
+						Resource: ResourceNode,
 						Unit:     unit.Hour,
 						Price:    0.096,
 					},
@@ -35,13 +35,13 @@ func TestGetPrices(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
 					{
 						Currency: unit.USD,
-						Resource: RAM,
+						Resource: ResourceRAM,
 						Unit:     unit.GiBHour,
 						Price:    0.004237,
 					},
@@ -54,13 +54,13 @@ func TestGetPrices(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
 					{
 						Currency: unit.USD,
-						Resource: RAM,
+						Resource: ResourceRAM,
 						Unit:     unit.GiBHour,
 						Price:    0.004237,
 					},
@@ -68,13 +68,13 @@ func TestGetPrices(t *testing.T) {
 				unit.CNY: []Price{
 					{
 						Currency: unit.CNY,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    3.1611,
 					},
 					{
 						Currency: unit.CNY,
-						Resource: RAM,
+						Resource: ResourceRAM,
 						Unit:     unit.GiBHour,
 						Price:    0.4237,
 					},
@@ -122,7 +122,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -139,7 +139,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -155,7 +155,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -163,7 +163,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -171,7 +171,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.GBP: []Price{
 					{
 						Currency: unit.GBP,
-						Resource: RAM,
+						Resource: ResourceRAM,
 						Unit:     unit.GiBHour,
 						Price:    0.025,
 					},
@@ -187,7 +187,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -195,7 +195,7 @@ func TestGetPricesInCurrency(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -264,7 +264,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -282,7 +282,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -300,7 +300,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.GBP: []Price{
 					{
 						Currency: unit.GBP,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.025,
 					},
@@ -317,7 +317,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},
@@ -325,7 +325,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.EUR: []Price{
 					{
 						Currency: unit.EUR,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.028,
 					},
@@ -343,7 +343,7 @@ func TestGetPricesInCurrencyWithDefault(t *testing.T) {
 				unit.USD: []Price{
 					{
 						Currency: unit.USD,
-						Resource: CPU,
+						Resource: ResourceCPU,
 						Unit:     unit.VCPUHour,
 						Price:    0.031611,
 					},

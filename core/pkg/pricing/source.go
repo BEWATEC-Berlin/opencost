@@ -8,7 +8,7 @@ import (
 
 type PricingSource interface {
 	NodePricingSource
-	VolumePricingSource
+	PersistentVolumePricingSource
 	GetPricingSet(context.Context) (*PricingSet, error)
 	SourceName() string
 }
@@ -21,6 +21,6 @@ type NodePricingSource interface {
 
 // TODO: add the following function for Opencost pricing
 // GetVolumePricing(VolumePricingProperties) (*VolumePricing, error)
-type VolumePricingSource interface {
-	NewVolumePricingReader(ctx context.Context) (reader.Reader[*VolumePricing], error)
+type PersistentVolumePricingSource interface {
+	NewPersistentVolumePricingReader(ctx context.Context) (reader.Reader[*PersistentVolumePricing], error)
 }

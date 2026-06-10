@@ -14,13 +14,13 @@ import (
 
 type MockPricingModule struct {
 	NodePricing   []*NodePricing
-	VolumePricing []*VolumePricing
+	VolumePricing []*PersistentVolumePricing
 }
 
 func NewMockPricingModule() (*MockPricingModule, error) {
 	mpm := &MockPricingModule{
 		NodePricing:   []*NodePricing{},
-		VolumePricing: []*VolumePricing{},
+		VolumePricing: []*PersistentVolumePricing{},
 	}
 
 	// Default
@@ -84,7 +84,7 @@ func (mpm *MockPricingModule) NewNodePricingReader(ctx context.Context) (reader.
 	return reader.NewSliceReader(mpm.NodePricing), nil
 }
 
-func (mpm *MockPricingModule) NewVolumePricingReader(ctx context.Context) (reader.Reader[*VolumePricing], error) {
+func (mpm *MockPricingModule) NewPersistentVolumePricingReader(ctx context.Context) (reader.Reader[*PersistentVolumePricing], error) {
 	return reader.NewSliceReader(mpm.VolumePricing), nil
 }
 
