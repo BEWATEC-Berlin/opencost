@@ -1,7 +1,10 @@
 package hetzner
 
 import (
+	"encoding/json"
+	"errors"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -653,6 +656,232 @@ func TestLoadBalancerPricingDoesNotUseCachedOutOfClusterResources(t *testing.T) 
 	}
 }
 
+func TestNetworkPricingUsesHetznerServerTrafficOveragePerGiB(t *testing.T) {
+	provider := testHetznerProviderWithNetworkPricingData(
+		"net",
+		map[locationTypeKey]HetznerTrafficPrice{
+			{Location: "fsn1", Type: "cpx21"}: {NetPerTB: 1, GrossPerTB: 1.19},
+			{Location: "hel1", Type: "cx22"}:  {NetPerTB: 2, GrossPerTB: 2.38},
+		},
+		map[locationTypeKey]HetznerTrafficPrice{
+			{Location: "fsn1", Type: "lb11"}: {NetPerTB: 0.5, GrossPerTB: 0.595},
+		},
+	)
+
+	network, err := provider.NetworkPricing()
+	if err != nil {
+		t.Fatalf("NetworkPricing() error = %v, want nil", err)
+	}
+
+	assertFloatNear(t, network.ZoneNetworkEgressCost, 0, nodePricingTolerance)
+	assertFloatNear(t, network.RegionNetworkEgressCost, 0, nodePricingTolerance)
+	assertFloatNear(t, network.InternetNetworkEgressCost, testPerTBToGiBPrice(1), nodePricingTolerance)
+	assertFloatNear(t, network.NatGatewayEgressCost, 0, nodePricingTolerance)
+	assertFloatNear(t, network.NatGatewayIngressCost, 0, nodePricingTolerance)
+}
+
+func TestNetworkPricingUsesGrossCurrencyMode(t *testing.T) {
+	provider := testHetznerProviderWithNetworkPricingData(
+		"gross",
+		map[locationTypeKey]HetznerTrafficPrice{
+			{Location: "fsn1", Type: "cpx21"}: {NetPerTB: 1, GrossPerTB: 1.19},
+		},
+		nil,
+	)
+
+	network, err := provider.NetworkPricing()
+	if err != nil {
+		t.Fatalf("NetworkPricing() error = %v, want nil", err)
+	}
+
+	assertFloatNear(t, network.InternetNetworkEgressCost, testPerTBToGiBPrice(1.19), nodePricingTolerance)
+}
+
+func TestNetworkPricingDoesNotApplyIncludedTrafficToNativeAllocation(t *testing.T) {
+	provider := testHetznerProviderWithNetworkPricingData(
+		"net",
+		map[locationTypeKey]HetznerTrafficPrice{
+			{Location: "fsn1", Type: "cpx21"}: {NetPerTB: 1},
+		},
+		nil,
+	)
+	provider.pricingData.Traffic[projectResourceKey{Project: "prod", ID: 100}] = HetznerTraffic{
+		Project:              "prod",
+		ResourceType:         "server",
+		ID:                   100,
+		Name:                 "worker",
+		Location:             "fsn1",
+		OutgoingBytes:        500 * gibibyte,
+		IncludedTrafficBytes: 20_000 * gibibyte,
+		NetPerTB:             1,
+	}
+
+	network, err := provider.NetworkPricing()
+	if err != nil {
+		t.Fatalf("NetworkPricing() error = %v, want nil", err)
+	}
+
+	// Native OpenCost network allocation uses per-GiB pricing with Prometheus
+	// network usage. Hetzner provider traffic counters and included monthly
+	// pools remain separate custom/cloud-cost style accounting inputs.
+	assertFloatNear(t, network.InternetNetworkEgressCost, testPerTBToGiBPrice(1), nodePricingTolerance)
+}
+
+func TestNetworkPricingMissingCacheOrTrafficPricesReturnsClearError(t *testing.T) {
+	tests := []struct {
+		name            string
+		provider        *Hetzner
+		wantErrContains string
+	}{
+		{name: "empty pricing cache", provider: &Hetzner{}, wantErrContains: "pricing cache is empty"},
+		{name: "missing server traffic pricing", provider: testHetznerProviderWithNetworkPricingData("net", nil, nil), wantErrContains: "server traffic pricing cache is empty"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			network, err := tc.provider.NetworkPricing()
+			if err == nil {
+				t.Fatalf("NetworkPricing() error = nil, want %q", tc.wantErrContains)
+			}
+			if !strings.Contains(err.Error(), tc.wantErrContains) {
+				t.Fatalf("NetworkPricing() error = %q, want containing %q", err, tc.wantErrContains)
+			}
+			if network != nil {
+				t.Fatalf("NetworkPricing() network = %#v, want nil on error", network)
+			}
+		})
+	}
+}
+
+func TestSanitizedPricingResourcesFixtureSupportsNetworkPricing(t *testing.T) {
+	raw, err := os.ReadFile("testdata/pricing_resources_sanitized.json")
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Contains(strings.ToLower(string(raw)), "token") {
+		t.Fatalf("sanitized fixture contains token material: %s", string(raw))
+	}
+
+	fixture := struct {
+		CurrencyMode              string                `json:"currencyMode"`
+		Projects                  []string              `json:"projects"`
+		ServerTrafficPrices       []trafficPriceFixture `json:"serverTrafficPrices"`
+		LoadBalancerTrafficPrices []trafficPriceFixture `json:"loadBalancerTrafficPrices"`
+		Traffic                   []HetznerTraffic      `json:"traffic"`
+	}{}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	data := newHetznerPricingData()
+	data.CurrencyMode = fixture.CurrencyMode
+	data.Projects = append([]string(nil), fixture.Projects...)
+	for _, price := range fixture.ServerTrafficPrices {
+		data.ServerTrafficPrices[locationTypeKey{Location: price.Location, Type: price.Type}] = HetznerTrafficPrice{
+			NetPerTB:   price.NetPerTB,
+			GrossPerTB: price.GrossPerTB,
+		}
+	}
+	for _, price := range fixture.LoadBalancerTrafficPrices {
+		data.LoadBalancerTrafficPrices[locationTypeKey{Location: price.Location, Type: price.Type}] = HetznerTrafficPrice{
+			NetPerTB:   price.NetPerTB,
+			GrossPerTB: price.GrossPerTB,
+		}
+	}
+	for _, traffic := range fixture.Traffic {
+		data.Traffic[projectResourceKey{Project: traffic.Project, ID: trafficID(traffic.ResourceType, traffic.ID)}] = traffic
+	}
+
+	provider := &Hetzner{Config: testProviderConfig{}, pricingData: data}
+	network, err := provider.NetworkPricing()
+	if err != nil {
+		t.Fatalf("NetworkPricing() error = %v, want nil", err)
+	}
+	assertFloatNear(t, network.InternetNetworkEgressCost, testPerTBToGiBPrice(1), nodePricingTolerance)
+	if summary := data.Summary(); summary.TrafficCount != 2 || summary.ServerTrafficPriceCount != 2 || summary.LoadBalancerTrafficPriceCount != 1 {
+		t.Fatalf("fixture summary = %#v, want traffic and pricing counts", summary)
+	}
+}
+
+func TestPricingSourceStatusEnabledAvailableErrorStates(t *testing.T) {
+	provider := &Hetzner{}
+	status := provider.PricingSourceStatus()[HetznerCloudPricingSource]
+	if status == nil {
+		t.Fatalf("PricingSourceStatus() missing %q", HetznerCloudPricingSource)
+	}
+	if !status.Enabled || status.Available || status.Error != "" {
+		t.Fatalf("empty status = %#v, want enabled unavailable without error", status)
+	}
+
+	provider.setPricingError("sanitized pricing failure")
+	status = provider.PricingSourceStatus()[HetznerCloudPricingSource]
+	if !status.Enabled || status.Available || status.Error != "sanitized pricing failure" {
+		t.Fatalf("error status = %#v, want enabled unavailable with sanitized error", status)
+	}
+
+	provider = testHetznerProviderWithNetworkPricingData("net", map[locationTypeKey]HetznerTrafficPrice{
+		{Location: "fsn1", Type: "cpx21"}: {NetPerTB: 1},
+	}, nil)
+	status = provider.PricingSourceStatus()[HetznerCloudPricingSource]
+	if !status.Enabled || !status.Available || status.Error != "" {
+		t.Fatalf("loaded status = %#v, want enabled available without error", status)
+	}
+}
+
+func TestProviderStatusAndErrorsDoNotLeakTokensAfterFailure(t *testing.T) {
+	const credential = "fixture-status-redaction-value"
+	provider := newFakeProvider(&fakeProjectClient{
+		err: errors.New("401 unauthorized for token " + credential),
+	}, []HetznerProject{{Name: "prod", Token: credential}})
+
+	err := provider.DownloadPricingData()
+	if err == nil {
+		t.Fatal("DownloadPricingData() error = nil, want sanitized error")
+	}
+
+	combined := strings.Join([]string{
+		err.Error(),
+		toJSONForTest(t, provider.PricingSourceStatus()),
+		toJSONForTest(t, provider.PricingSourceSummary()),
+	}, "\n")
+	if strings.Contains(combined, credential) {
+		t.Fatalf("provider status leaked token: %s", combined)
+	}
+	if !strings.Contains(combined, "[redacted]") {
+		t.Fatalf("provider status = %s, want redacted marker", combined)
+	}
+}
+
+func TestStatusNoOpAndStableProviderSurface(t *testing.T) {
+	provider := &Hetzner{
+		Config:           testProviderConfig{},
+		ClusterRegion:    "hel1",
+		ClusterAccountID: "project-a",
+	}
+
+	if platform, err := provider.GetManagementPlatform(); err != nil || platform != "" {
+		t.Fatalf("GetManagementPlatform() = %q, %v; want empty platform and nil error", platform, err)
+	}
+	if status := provider.ServiceAccountStatus(); status == nil || len(status.Checks) != 0 {
+		t.Fatalf("ServiceAccountStatus() = %#v, want empty checks", status)
+	}
+	if name, cost, err := provider.ClusterManagementPricing(); err != nil || name != "" || cost != 0 {
+		t.Fatalf("ClusterManagementPricing() = %q, %f, %v; want no-op values", name, cost, err)
+	}
+	if addresses, err := provider.GetAddresses(); err != nil || addresses != nil {
+		t.Fatalf("GetAddresses() = %#v, %v; want nil, nil", addresses, err)
+	}
+	if disks, err := provider.GetDisks(); err != nil || disks != nil {
+		t.Fatalf("GetDisks() = %#v, %v; want nil, nil", disks, err)
+	}
+	if resources, err := provider.GetOrphanedResources(); err == nil || !strings.Contains(err.Error(), "not implemented") || resources != nil {
+		t.Fatalf("GetOrphanedResources() = %#v, %v; want nil resources and not implemented error", resources, err)
+	}
+	if regions := provider.Regions(); len(regions) != 1 || regions[0] != "hel1" {
+		t.Fatalf("Regions() = %#v, want configured cluster region", regions)
+	}
+}
+
 func TestClusterInfo(t *testing.T) {
 	h := &Hetzner{
 		Config:           testProviderConfig{},
@@ -730,6 +959,28 @@ func testHetznerProviderWithLoadBalancerPricingData(currencyMode string, prices 
 		provider.pricingData.LoadBalancerPrices[key] = price
 	}
 	return provider
+}
+
+func testHetznerProviderWithNetworkPricingData(currencyMode string, serverPrices, loadBalancerPrices map[locationTypeKey]HetznerTrafficPrice) *Hetzner {
+	provider := testHetznerProviderWithPricingData(currencyMode, nil, nil)
+	for key, price := range serverPrices {
+		provider.pricingData.ServerTrafficPrices[key] = price
+	}
+	for key, price := range loadBalancerPrices {
+		provider.pricingData.LoadBalancerTrafficPrices[key] = price
+	}
+	return provider
+}
+
+func testPerTBToGiBPrice(pricePerTB float64) float64 {
+	return pricePerTB / (hetznerBytesPerTB / float64(gibibyte))
+}
+
+type trafficPriceFixture struct {
+	Location   string  `json:"location"`
+	Type       string  `json:"type"`
+	NetPerTB   float64 `json:"netPerTB"`
+	GrossPerTB float64 `json:"grossPerTB"`
 }
 
 func testPersistentVolume(name, storageClass, volumeHandle, size string) *clustercache.PersistentVolume {

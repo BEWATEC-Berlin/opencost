@@ -1,0 +1,50 @@
+{
+  "currencyMode": "net",
+  "projects": ["prod", "stage"],
+  "serverTrafficPrices": [
+    {
+      "location": "fsn1",
+      "type": "cpx21",
+      "netPerTB": 1,
+      "grossPerTB": 1.19
+    },
+    {
+      "location": "nbg1",
+      "type": "cx22",
+      "netPerTB": 1,
+      "grossPerTB": 1.19
+    }
+  ],
+  "loadBalancerTrafficPrices": [
+    {
+      "location": "fsn1",
+      "type": "lb11",
+      "netPerTB": 2,
+      "grossPerTB": 2.38
+    }
+  ],
+  "traffic": [
+    {
+      "project": "prod",
+      "resourceType": "server",
+      "id": 100,
+      "name": "worker-prod",
+      "location": "fsn1",
+      "outgoingBytes": 500000000000,
+      "includedTrafficBytes": 20000000000000,
+      "netPerTB": 1,
+      "grossPerTB": 1.19
+    },
+    {
+      "project": "stage",
+      "resourceType": "load_balancer",
+      "id": 200,
+      "name": "ingress-stage",
+      "location": "fsn1",
+      "outgoingBytes": 1500000000000,
+      "includedTrafficBytes": 1000000000000,
+      "netPerTB": 2,
+      "grossPerTB": 2.38
+    }
+  ]
+}
