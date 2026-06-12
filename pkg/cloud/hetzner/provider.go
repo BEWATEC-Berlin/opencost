@@ -18,12 +18,15 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/env"
+	v1 "k8s.io/api/core/v1"
 )
 
 const HetznerCloudPricingSource = "Hetzner Cloud Pricing"
 
 const (
 	hcloudProviderIDPrefix = "hcloud://"
+	hcloudCSIDriver        = "csi.hetzner.cloud"
+	hcloudStorageClass     = "hcloud-volumes"
 	hetznerNodeUsageType   = "hetzner-cloud"
 	gibibyte               = 1024 * 1024 * 1024
 )
@@ -71,6 +74,8 @@ type hetznerPVKey struct {
 	StorageClassParameters map[string]string
 	ProviderID             string
 	Region                 string
+	SizeGB                 int64
+	IsHCloudCSI            bool
 }
 
 func (k *hetznerPVKey) ID() string {
@@ -278,17 +283,58 @@ func (*Hetzner) GpuPricing(map[string]string) (string, error) {
 }
 
 func (h *Hetzner) PVPricing(pvk models.PVKey) (*models.PV, error) {
+	if pvk == nil {
+		return &models.PV{}, nil
+	}
+
+	storageClass := pvk.GetStorageClass()
+	providerID := strings.TrimSpace(pvk.ID())
+	region := pvk.Features()
+	sizeGB := int64(0)
+	var parameters map[string]string
+	isHCloudCSI := storageClass == hcloudStorageClass || strings.HasPrefix(providerID, hcloudProviderIDPrefix)
+	if key, ok := pvk.(*hetznerPVKey); ok {
+		sizeGB = key.SizeGB
+		parameters = copyStringMap(key.StorageClassParameters)
+		isHCloudCSI = isHCloudCSI || key.IsHCloudCSI
+	}
+	if !isHCloudCSI {
+		return &models.PV{}, nil
+	}
+
+	volumeID, hasVolumeID, err := parseHCloudVolumeID(providerID)
+	if err != nil {
+		return nil, err
+	}
+	if !hasVolumeID {
+		log.Debugf("Hetzner PV pricing unavailable: missing CSI volume handle, storageClass=%q region=%q", storageClass, region)
+		return &models.PV{}, nil
+	}
+	providerID = fmt.Sprintf("%s%d", hcloudProviderIDPrefix, volumeID)
+
 	h.DownloadPricingDataLock.RLock()
 	defer h.DownloadPricingDataLock.RUnlock()
 
 	if h.pricingData == nil {
-		log.Debugf("Hetzner PV pricing unavailable: pricing cache is empty, storageClass=%q region=%q", pvk.GetStorageClass(), pvk.Features())
+		log.Debugf("Hetzner PV pricing unavailable: pricing cache is empty, storageClass=%q region=%q", storageClass, region)
 		return &models.PV{}, nil
 	}
 	volumePrice, ok := h.pricingData.VolumePrices["default"]
 	if !ok {
-		log.Debugf("Hetzner PV pricing unavailable: default volume price missing, storageClass=%q region=%q", pvk.GetStorageClass(), pvk.Features())
+		log.Debugf("Hetzner PV pricing unavailable: default volume price missing, storageClass=%q region=%q", storageClass, region)
 		return &models.PV{}, nil
+	}
+	if len(h.pricingData.Volumes) > 0 {
+		volume, err := h.resolveCachedVolume(h.pricingData, volumeID)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(volume.Location) != "" {
+			region = volume.Location
+		}
+		if volume.SizeGB > 0 {
+			sizeGB = int64(volume.SizeGB)
+		}
 	}
 
 	cost := volumePrice.NetPerGBHour
@@ -297,18 +343,90 @@ func (h *Hetzner) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	}
 
 	return &models.PV{
-		Cost:   strconv.FormatFloat(cost, 'f', -1, 64),
-		Class:  pvk.GetStorageClass(),
-		Region: pvk.Features(),
+		Cost:       formatHetznerFloat(cost),
+		CostPerIO:  "0",
+		Class:      storageClass,
+		Size:       formatHetznerSizeGB(sizeGB),
+		Region:     region,
+		ProviderID: providerID,
+		Parameters: parameters,
 	}, nil
+}
+
+func parseHCloudVolumeID(providerID string) (int64, bool, error) {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return 0, false, nil
+	}
+
+	rawID := providerID
+	if strings.HasPrefix(providerID, hcloudProviderIDPrefix) {
+		rawID = strings.TrimPrefix(providerID, hcloudProviderIDPrefix)
+	} else if !isNumericString(providerID) {
+		return 0, true, fmt.Errorf("Hetzner PV pricing: expected hcloud volume ID as numeric CSI handle or hcloud:// provider ID, got %q", providerID)
+	}
+	if rawID == "" {
+		return 0, true, fmt.Errorf("Hetzner PV pricing: empty volume ID in provider ID %q", providerID)
+	}
+
+	volumeID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		return 0, true, fmt.Errorf("Hetzner PV pricing: parse volume ID %q: %w", rawID, err)
+	}
+	if volumeID <= 0 {
+		return 0, true, fmt.Errorf("Hetzner PV pricing: volume ID %d must be positive", volumeID)
+	}
+	return volumeID, true, nil
+}
+
+func (h *Hetzner) resolveCachedVolume(data *HetznerPricingData, volumeID int64) (HetznerVolume, error) {
+	project := strings.TrimSpace(h.ClusterAccountID)
+	var matches []HetznerVolume
+	for key, volume := range data.Volumes {
+		if key.ID == volumeID {
+			matches = append(matches, volume)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return HetznerVolume{}, fmt.Errorf("Hetzner PV pricing: volume ID %d not found in cached Hetzner volumes", volumeID)
+	case 1:
+		return matches[0], nil
+	default:
+		if project != "" {
+			volume, ok := data.Volumes[projectResourceKey{Project: project, ID: volumeID}]
+			if ok {
+				return volume, nil
+			}
+			return HetznerVolume{}, fmt.Errorf("Hetzner PV pricing: volume ID %d matched multiple Hetzner projects, but no match was found for configured project %q", volumeID, project)
+		}
+		return HetznerVolume{}, fmt.Errorf("Hetzner PV pricing: volume ID %d matched multiple Hetzner projects; set ClusterAccountID to the Hetzner project name", volumeID)
+	}
 }
 
 func (*Hetzner) NetworkPricing() (*models.Network, error) {
 	return &models.Network{}, nil
 }
 
-func (*Hetzner) LoadBalancerPricing() (*models.LoadBalancer, error) {
-	return &models.LoadBalancer{}, nil
+// LoadBalancerPricing has no OpenCost service-specific key to inspect, so the
+// Hetzner provider cannot map a Kubernetes Service to an exact Hetzner LB type
+// or resource. Use the cheapest cached LB type hourly price as a deterministic
+// Kubernetes Service allocation fallback, and deliberately ignore cached LB
+// resource instances to avoid double-counting non-Kubernetes load balancers.
+func (h *Hetzner) LoadBalancerPricing() (*models.LoadBalancer, error) {
+	h.DownloadPricingDataLock.RLock()
+	defer h.DownloadPricingDataLock.RUnlock()
+
+	if h.pricingData == nil || len(h.pricingData.LoadBalancerPrices) == 0 {
+		return &models.LoadBalancer{}, nil
+	}
+
+	cost, ok := cheapestHetznerLoadBalancerCost(h.pricingData.LoadBalancerPrices, h.pricingData.CurrencyMode)
+	if !ok {
+		return &models.LoadBalancer{}, nil
+	}
+
+	return &models.LoadBalancer{Cost: cost}, nil
 }
 
 func (*Hetzner) GetKey(labels map[string]string, node *clustercache.Node) models.Key {
@@ -323,17 +441,146 @@ func (*Hetzner) GetKey(labels map[string]string, node *clustercache.Node) models
 }
 
 func (*Hetzner) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+	if pv == nil {
+		return &hetznerPVKey{
+			StorageClassParameters: copyStringMap(parameters),
+			Region:                 defaultRegion,
+		}
+	}
+
 	providerID := ""
+	isHCloudCSI := false
 	if pv.Spec.CSI != nil {
-		providerID = pv.Spec.CSI.VolumeHandle
+		isHCloudCSI = strings.EqualFold(strings.TrimSpace(pv.Spec.CSI.Driver), hcloudCSIDriver)
+		providerID = normalizeHCloudVolumeProviderID(pv.Spec.CSI.VolumeHandle)
 	}
 
 	return &hetznerPVKey{
 		StorageClassName:       pv.Spec.StorageClassName,
-		StorageClassParameters: parameters,
+		StorageClassParameters: copyStringMap(parameters),
 		ProviderID:             providerID,
-		Region:                 defaultRegion,
+		Region:                 hetznerPVRegion(pv, parameters, defaultRegion),
+		SizeGB:                 hetznerPVSizeGB(pv),
+		IsHCloudCSI:            isHCloudCSI,
 	}
+}
+
+func normalizeHCloudVolumeProviderID(volumeHandle string) string {
+	volumeHandle = strings.TrimSpace(volumeHandle)
+	if volumeHandle == "" {
+		return ""
+	}
+	if strings.HasPrefix(volumeHandle, hcloudProviderIDPrefix) {
+		return volumeHandle
+	}
+	if isNumericString(volumeHandle) {
+		return hcloudProviderIDPrefix + volumeHandle
+	}
+	return volumeHandle
+}
+
+func isNumericString(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func hetznerPVRegion(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) string {
+	region := strings.TrimSpace(defaultRegion)
+	for _, key := range []string{"location", "topology.kubernetes.io/zone", "topology.kubernetes.io/region"} {
+		if value := strings.TrimSpace(parameters[key]); value != "" {
+			region = value
+			break
+		}
+	}
+	if pv == nil || pv.Spec.NodeAffinity == nil || pv.Spec.NodeAffinity.Required == nil {
+		return region
+	}
+	for _, term := range pv.Spec.NodeAffinity.Required.NodeSelectorTerms {
+		for _, expr := range term.MatchExpressions {
+			if expr.Operator != v1.NodeSelectorOpIn || len(expr.Values) == 0 {
+				continue
+			}
+			if expr.Key == v1.LabelTopologyZone || expr.Key == v1.LabelTopologyRegion || expr.Key == "failure-domain.beta.kubernetes.io/zone" || expr.Key == "failure-domain.beta.kubernetes.io/region" {
+				if value := strings.TrimSpace(expr.Values[0]); value != "" {
+					return value
+				}
+			}
+		}
+	}
+	return region
+}
+
+func hetznerPVSizeGB(pv *clustercache.PersistentVolume) int64 {
+	if pv == nil {
+		return 0
+	}
+	storage := pv.Spec.Capacity.Storage()
+	if storage == nil {
+		return 0
+	}
+	return storage.Value() / gibibyte
+}
+
+func formatHetznerSizeGB(sizeGB int64) string {
+	if sizeGB <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(sizeGB, 10)
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	copied := make(map[string]string, len(values))
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
+}
+
+func cheapestHetznerLoadBalancerCost(prices map[locationTypeKey]HetznerHourlyPrice, currencyMode string) (float64, bool) {
+	var bestKey locationTypeKey
+	var bestCost float64
+	found := false
+	for key, price := range prices {
+		cost := price.NetHourly
+		if currencyMode == "gross" {
+			cost = price.GrossHourly
+		}
+		if cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
+			continue
+		}
+		if !found || cost < bestCost || (cost == bestCost && compareLocationTypeKey(key, bestKey) < 0) {
+			bestCost = cost
+			bestKey = key
+			found = true
+		}
+	}
+	return bestCost, found
+}
+
+func compareLocationTypeKey(a, b locationTypeKey) int {
+	if a.Location < b.Location {
+		return -1
+	}
+	if a.Location > b.Location {
+		return 1
+	}
+	if a.Type < b.Type {
+		return -1
+	}
+	if a.Type > b.Type {
+		return 1
+	}
+	return 0
 }
 
 func (h *Hetzner) UpdateConfig(r io.Reader, updateType string) (*models.CustomPricing, error) {

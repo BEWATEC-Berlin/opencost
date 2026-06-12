@@ -11,6 +11,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/config"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const nodePricingTolerance = 0.000000001
@@ -320,6 +321,338 @@ func TestNodePricingFailsForInvalidCPURAMSplitInputs(t *testing.T) {
 	}
 }
 
+func TestGetPVKeyExtractsHCloudCSIMetadata(t *testing.T) {
+	provider := &Hetzner{}
+	parameters := map[string]string{
+		"type":                      "default",
+		"fsType":                    "ext4",
+		"csi.storage.k8s.io/fstype": "ext4",
+	}
+	pv := testPersistentVolume("pv-data", "hcloud-volumes", "123456", "20Gi")
+	pv.Spec.NodeAffinity = &v1.VolumeNodeAffinity{
+		Required: &v1.NodeSelector{
+			NodeSelectorTerms: []v1.NodeSelectorTerm{{
+				MatchExpressions: []v1.NodeSelectorRequirement{{
+					Key:      v1.LabelTopologyZone,
+					Operator: v1.NodeSelectorOpIn,
+					Values:   []string{"fsn1"},
+				}},
+			}},
+		},
+	}
+
+	key := provider.GetPVKey(pv, parameters, "nbg1")
+	hkey, ok := key.(*hetznerPVKey)
+	if !ok {
+		t.Fatalf("GetPVKey() type = %T, want *hetznerPVKey", key)
+	}
+
+	assertNodeField(t, "ID", hkey.ID(), "hcloud://123456")
+	assertNodeField(t, "StorageClass", hkey.GetStorageClass(), "hcloud-volumes")
+	assertNodeField(t, "Features", hkey.Features(), "fsn1")
+	if hkey.SizeGB != 20 {
+		t.Fatalf("SizeGB = %d, want 20", hkey.SizeGB)
+	}
+	if hkey.StorageClassParameters["type"] != "default" || hkey.StorageClassParameters["fsType"] != "ext4" {
+		t.Fatalf("StorageClassParameters = %#v, want copied storage class parameters", hkey.StorageClassParameters)
+	}
+	parameters["type"] = "mutated"
+	if hkey.StorageClassParameters["type"] != "default" {
+		t.Fatalf("StorageClassParameters aliased input map: %#v", hkey.StorageClassParameters)
+	}
+}
+
+func TestGetPVKeyHandlesMissingCSIData(t *testing.T) {
+	provider := &Hetzner{}
+	pv := testPersistentVolume("pv-empty", "manual", "", "1Gi")
+	pv.Spec.CSI = nil
+
+	key := provider.GetPVKey(pv, map[string]string{"foo": "bar"}, "hel1")
+	hkey, ok := key.(*hetznerPVKey)
+	if !ok {
+		t.Fatalf("GetPVKey() type = %T, want *hetznerPVKey", key)
+	}
+
+	assertNodeField(t, "ID", hkey.ID(), "")
+	assertNodeField(t, "StorageClass", hkey.GetStorageClass(), "manual")
+	assertNodeField(t, "Features", hkey.Features(), "hel1")
+	if hkey.SizeGB != 1 {
+		t.Fatalf("SizeGB = %d, want 1", hkey.SizeGB)
+	}
+}
+
+func TestPVPricingValidHCloudCSIVolume(t *testing.T) {
+	provider := testHetznerProviderWithVolumePricingData("net", []HetznerVolume{{
+		Project:  "prod",
+		ID:       123456,
+		Name:     "pvc-data",
+		Location: "fsn1",
+		SizeGB:   100,
+	}}, HetznerVolumePrice{
+		NetPerGBHour:   0.0476 / hetznerHoursPerMonth,
+		GrossPerGBHour: 0.0566 / hetznerHoursPerMonth,
+	})
+
+	pv, err := provider.PVPricing(&hetznerPVKey{
+		StorageClassName: "hcloud-volumes",
+		ProviderID:       "hcloud://123456",
+		Region:           "nbg1",
+		SizeGB:           20,
+		StorageClassParameters: map[string]string{
+			"fsType": "ext4",
+		},
+	})
+	if err != nil {
+		t.Fatalf("PVPricing() error = %v, want nil", err)
+	}
+
+	assertNodeField(t, "Cost", pv.Cost, "0.0000652054794520548")
+	assertNodeField(t, "CostPerIO", pv.CostPerIO, "0")
+	assertNodeField(t, "Class", pv.Class, "hcloud-volumes")
+	assertNodeField(t, "Size", pv.Size, "100")
+	assertNodeField(t, "Region", pv.Region, "fsn1")
+	assertNodeField(t, "ProviderID", pv.ProviderID, "hcloud://123456")
+	if pv.Parameters["fsType"] != "ext4" {
+		t.Fatalf("Parameters = %#v, want storage class parameters", pv.Parameters)
+	}
+}
+
+func TestPVPricingValidationAndMissingData(t *testing.T) {
+	provider := testHetznerProviderWithVolumePricingData("net", []HetznerVolume{{
+		Project: "prod",
+		ID:      10,
+	}}, HetznerVolumePrice{NetPerGBHour: 0.0001, GrossPerGBHour: 0.0002})
+
+	tests := []struct {
+		name            string
+		key             models.PVKey
+		wantEmpty       bool
+		wantErrContains string
+	}{
+		{
+			name:      "missing CSI data returns empty pricing",
+			key:       &hetznerPVKey{StorageClassName: "hcloud-volumes"},
+			wantEmpty: true,
+		},
+		{
+			name:      "unknown non-Hetzner storage class returns empty pricing",
+			key:       &hetznerPVKey{StorageClassName: "standard", ProviderID: ""},
+			wantEmpty: true,
+		},
+		{
+			name:            "malformed provider ID",
+			key:             &hetznerPVKey{StorageClassName: "hcloud-volumes", ProviderID: "not-a-number"},
+			wantErrContains: "expected hcloud volume ID",
+		},
+		{
+			name:            "non-numeric provider ID",
+			key:             &hetznerPVKey{StorageClassName: "hcloud-volumes", ProviderID: "hcloud://abc"},
+			wantErrContains: "parse volume ID",
+		},
+		{
+			name:            "unknown cached volume ID",
+			key:             &hetznerPVKey{StorageClassName: "hcloud-volumes", ProviderID: "hcloud://404"},
+			wantErrContains: "volume ID 404 not found",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pv, err := provider.PVPricing(tc.key)
+			if tc.wantErrContains != "" {
+				if err == nil {
+					t.Fatalf("PVPricing() error = nil, want %q", tc.wantErrContains)
+				}
+				if !strings.Contains(err.Error(), tc.wantErrContains) {
+					t.Fatalf("PVPricing() error = %q, want containing %q", err, tc.wantErrContains)
+				}
+				if pv != nil {
+					t.Fatalf("PVPricing() pv = %#v, want nil on error", pv)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("PVPricing() error = %v, want nil", err)
+			}
+			if !tc.wantEmpty {
+				return
+			}
+			if pv == nil {
+				t.Fatal("PVPricing() pv = nil, want empty PV")
+			}
+			if pv.Cost != "" || pv.ProviderID != "" {
+				t.Fatalf("PVPricing() pv = %#v, want empty PV", pv)
+			}
+		})
+	}
+}
+
+func TestPVPricingMissingCacheOrPriceReturnsEmpty(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider *Hetzner
+	}{
+		{name: "empty pricing cache", provider: &Hetzner{}},
+		{name: "missing volume price", provider: testHetznerProviderWithPricingData("net", nil, nil)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pv, err := tc.provider.PVPricing(&hetznerPVKey{
+				StorageClassName: "hcloud-volumes",
+				ProviderID:       "hcloud://10",
+			})
+			if err != nil {
+				t.Fatalf("PVPricing() error = %v, want nil", err)
+			}
+			if pv == nil {
+				t.Fatal("PVPricing() pv = nil, want empty PV")
+			}
+			if pv.Cost != "" || pv.ProviderID != "" {
+				t.Fatalf("PVPricing() pv = %#v, want empty PV", pv)
+			}
+		})
+	}
+}
+
+func TestPVPricingUsesGrossCurrencyMode(t *testing.T) {
+	provider := testHetznerProviderWithVolumePricingData("gross", []HetznerVolume{{
+		Project:  "prod",
+		ID:       123456,
+		Location: "hel1",
+		SizeGB:   50,
+	}}, HetznerVolumePrice{
+		NetPerGBHour:   0.0476 / hetznerHoursPerMonth,
+		GrossPerGBHour: 0.0566 / hetznerHoursPerMonth,
+	})
+
+	pv, err := provider.PVPricing(&hetznerPVKey{
+		StorageClassName: "hcloud-volumes",
+		ProviderID:       "123456",
+	})
+	if err != nil {
+		t.Fatalf("PVPricing() error = %v, want nil", err)
+	}
+	assertNodeField(t, "Cost", pv.Cost, "0.00007753424657534247")
+	assertNodeField(t, "Region", pv.Region, "hel1")
+	assertNodeField(t, "Size", pv.Size, "50")
+	assertNodeField(t, "ProviderID", pv.ProviderID, "hcloud://123456")
+}
+
+func TestPVPricingFailsAmbiguousDuplicateVolumeIDsWithoutConfiguredProject(t *testing.T) {
+	provider := testHetznerProviderWithVolumePricingData("net", []HetznerVolume{
+		{Project: "prod", ID: 100, Location: "fsn1", SizeGB: 10},
+		{Project: "stage", ID: 100, Location: "nbg1", SizeGB: 20},
+	}, HetznerVolumePrice{NetPerGBHour: 0.0001})
+
+	pv, err := provider.PVPricing(&hetznerPVKey{StorageClassName: "hcloud-volumes", ProviderID: "hcloud://100"})
+	if err == nil {
+		t.Fatal("PVPricing() error = nil, want ambiguous volume ID error")
+	}
+	if !strings.Contains(err.Error(), "matched multiple Hetzner projects") {
+		t.Fatalf("PVPricing() error = %q, want ambiguous project message", err)
+	}
+	if pv != nil {
+		t.Fatalf("PVPricing() pv = %#v, want nil on ambiguity", pv)
+	}
+}
+
+func TestPVPricingResolvesDuplicateVolumeIDsByConfiguredProject(t *testing.T) {
+	provider := testHetznerProviderWithVolumePricingData("net", []HetznerVolume{
+		{Project: "prod", ID: 100, Location: "fsn1", SizeGB: 10},
+		{Project: "stage", ID: 100, Location: "nbg1", SizeGB: 20},
+	}, HetznerVolumePrice{NetPerGBHour: 0.0001})
+	provider.ClusterAccountID = "stage"
+
+	pv, err := provider.PVPricing(&hetznerPVKey{StorageClassName: "hcloud-volumes", ProviderID: "hcloud://100"})
+	if err != nil {
+		t.Fatalf("PVPricing() error = %v, want nil", err)
+	}
+	assertNodeField(t, "Region", pv.Region, "nbg1")
+	assertNodeField(t, "Size", pv.Size, "20")
+}
+
+func TestLoadBalancerPricingUsesCheapestCachedTypeFallback(t *testing.T) {
+	provider := testHetznerProviderWithLoadBalancerPricingData("net", map[locationTypeKey]HetznerHourlyPrice{
+		{Location: "nbg1", Type: "lb21"}: {NetHourly: 0.018, GrossHourly: 0.02142},
+		{Location: "fsn1", Type: "lb11"}: {NetHourly: 0.0081, GrossHourly: 0.0096},
+		{Location: "hel1", Type: "lb11"}: {NetHourly: 0.0082, GrossHourly: 0.009758},
+	})
+
+	// OpenCost does not pass a Service-specific key to LoadBalancerPricing, so
+	// the Hetzner provider deliberately uses the cheapest cached LB type price
+	// as a deterministic Kubernetes Service allocation fallback.
+	lb, err := provider.LoadBalancerPricing()
+	if err != nil {
+		t.Fatalf("LoadBalancerPricing() error = %v, want nil", err)
+	}
+	if lb.Cost != 0.0081 {
+		t.Fatalf("Cost = %.12f, want cheapest net hourly cost 0.0081", lb.Cost)
+	}
+	if len(lb.IngressIPAddresses) != 0 {
+		t.Fatalf("IngressIPAddresses = %#v, want empty provider-level list", lb.IngressIPAddresses)
+	}
+}
+
+func TestLoadBalancerPricingUsesGrossCurrencyMode(t *testing.T) {
+	provider := testHetznerProviderWithLoadBalancerPricingData("gross", map[locationTypeKey]HetznerHourlyPrice{
+		{Location: "fsn1", Type: "lb11"}: {NetHourly: 0.0081, GrossHourly: 0.0096},
+		{Location: "nbg1", Type: "lb21"}: {NetHourly: 0.018, GrossHourly: 0.02142},
+	})
+
+	lb, err := provider.LoadBalancerPricing()
+	if err != nil {
+		t.Fatalf("LoadBalancerPricing() error = %v, want nil", err)
+	}
+	if lb.Cost != 0.0096 {
+		t.Fatalf("Cost = %.12f, want cheapest gross hourly cost 0.0096", lb.Cost)
+	}
+}
+
+func TestLoadBalancerPricingMissingCacheOrPricesReturnsEmpty(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider *Hetzner
+	}{
+		{name: "empty pricing cache", provider: &Hetzner{}},
+		{name: "missing load balancer prices", provider: testHetznerProviderWithLoadBalancerPricingData("net", nil)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lb, err := tc.provider.LoadBalancerPricing()
+			if err != nil {
+				t.Fatalf("LoadBalancerPricing() error = %v, want nil", err)
+			}
+			if lb == nil {
+				t.Fatal("LoadBalancerPricing() lb = nil, want empty LoadBalancer")
+			}
+			if lb.Cost != 0 || len(lb.IngressIPAddresses) != 0 {
+				t.Fatalf("LoadBalancerPricing() lb = %#v, want empty LoadBalancer", lb)
+			}
+		})
+	}
+}
+
+func TestLoadBalancerPricingDoesNotUseCachedOutOfClusterResources(t *testing.T) {
+	provider := testHetznerProviderWithLoadBalancerPricingData("net", map[locationTypeKey]HetznerHourlyPrice{})
+	provider.pricingData.LoadBalancers[projectResourceKey{Project: "prod", ID: 100}] = HetznerLoadBalancer{
+		Project:   "prod",
+		ID:        100,
+		Type:      "lb11",
+		Location:  "fsn1",
+		NetHourly: 0.0081,
+	}
+
+	lb, err := provider.LoadBalancerPricing()
+	if err != nil {
+		t.Fatalf("LoadBalancerPricing() error = %v, want nil", err)
+	}
+	if lb.Cost != 0 {
+		t.Fatalf("Cost = %.12f, want 0 when only cached resource instances exist", lb.Cost)
+	}
+}
+
 func TestClusterInfo(t *testing.T) {
 	h := &Hetzner{
 		Config:           testProviderConfig{},
@@ -376,6 +709,44 @@ func testHetznerProviderWithPricingData(currencyMode string, servers []HetznerSe
 	return &Hetzner{
 		Config:      testProviderConfig{},
 		pricingData: data,
+	}
+}
+
+func testHetznerProviderWithVolumePricingData(currencyMode string, volumes []HetznerVolume, price HetznerVolumePrice) *Hetzner {
+	provider := testHetznerProviderWithPricingData(currencyMode, nil, nil)
+	provider.pricingData.VolumePrices["default"] = price
+	for _, volume := range volumes {
+		provider.pricingData.Volumes[projectResourceKey{Project: volume.Project, ID: volume.ID}] = volume
+		if !containsString(provider.pricingData.Projects, volume.Project) {
+			provider.pricingData.Projects = append(provider.pricingData.Projects, volume.Project)
+		}
+	}
+	return provider
+}
+
+func testHetznerProviderWithLoadBalancerPricingData(currencyMode string, prices map[locationTypeKey]HetznerHourlyPrice) *Hetzner {
+	provider := testHetznerProviderWithPricingData(currencyMode, nil, nil)
+	for key, price := range prices {
+		provider.pricingData.LoadBalancerPrices[key] = price
+	}
+	return provider
+}
+
+func testPersistentVolume(name, storageClass, volumeHandle, size string) *clustercache.PersistentVolume {
+	return &clustercache.PersistentVolume{
+		Name: name,
+		Spec: v1.PersistentVolumeSpec{
+			StorageClassName: storageClass,
+			Capacity: v1.ResourceList{
+				v1.ResourceStorage: resource.MustParse(size),
+			},
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       "csi.hetzner.cloud",
+					VolumeHandle: volumeHandle,
+				},
+			},
+		},
 	}
 }
 
