@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"sync"
 
 	"github.com/opencost/opencost/core/pkg/clustercache"
 	coreenv "github.com/opencost/opencost/core/pkg/env"
+	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/core/pkg/util/json"
@@ -19,10 +21,18 @@ import (
 const HetznerCloudPricingSource = "Hetzner Cloud Pricing"
 
 type Hetzner struct {
-	Clientset        clustercache.ClusterCache
-	Config           models.ProviderConfig
-	ClusterRegion    string
-	ClusterAccountID string
+	Clientset               clustercache.ClusterCache
+	Config                  models.ProviderConfig
+	ClusterRegion           string
+	ClusterAccountID        string
+	DownloadPricingDataLock sync.RWMutex
+
+	ConfigData HetznerConfig
+	ConfigPath string
+	NewClient  func(token string) hetznerProjectClient
+
+	pricingData      *HetznerPricingData
+	lastPricingError string
 }
 
 type hetznerKey struct {
@@ -110,8 +120,25 @@ func (*Hetzner) GpuPricing(map[string]string) (string, error) {
 	return "", nil
 }
 
-func (*Hetzner) PVPricing(models.PVKey) (*models.PV, error) {
-	return &models.PV{}, nil
+func (h *Hetzner) PVPricing(pvk models.PVKey) (*models.PV, error) {
+	h.DownloadPricingDataLock.RLock()
+	defer h.DownloadPricingDataLock.RUnlock()
+
+	if h.pricingData == nil {
+		log.Debugf("Hetzner PV pricing unavailable: pricing cache is empty, storageClass=%q region=%q", pvk.GetStorageClass(), pvk.Features())
+		return &models.PV{}, nil
+	}
+	volumePrice, ok := h.pricingData.VolumePrices["default"]
+	if !ok {
+		log.Debugf("Hetzner PV pricing unavailable: default volume price missing, storageClass=%q region=%q", pvk.GetStorageClass(), pvk.Features())
+		return &models.PV{}, nil
+	}
+
+	return &models.PV{
+		Cost:   strconv.FormatFloat(volumePrice.NetPerGBHour, 'f', -1, 64),
+		Class:  pvk.GetStorageClass(),
+		Region: pvk.Features(),
+	}, nil
 }
 
 func (*Hetzner) NetworkPricing() (*models.Network, error) {
@@ -120,14 +147,6 @@ func (*Hetzner) NetworkPricing() (*models.Network, error) {
 
 func (*Hetzner) LoadBalancerPricing() (*models.LoadBalancer, error) {
 	return &models.LoadBalancer{}, nil
-}
-
-func (*Hetzner) AllNodePricing() (interface{}, error) {
-	return nil, nil
-}
-
-func (*Hetzner) DownloadPricingData() error {
-	return nil
 }
 
 func (*Hetzner) GetKey(labels map[string]string, node *clustercache.Node) models.Key {
@@ -213,16 +232,6 @@ func (*Hetzner) ServiceAccountStatus() *models.ServiceAccountStatus {
 	}
 }
 
-func (*Hetzner) PricingSourceStatus() map[string]*models.PricingSource {
-	return map[string]*models.PricingSource{
-		HetznerCloudPricingSource: {
-			Name:      HetznerCloudPricingSource,
-			Enabled:   true,
-			Available: false,
-		},
-	}
-}
-
 func (*Hetzner) ClusterManagementPricing() (string, float64, error) {
 	return "", 0.0, nil
 }
@@ -240,8 +249,4 @@ func (h *Hetzner) Regions() []string {
 		return []string{h.ClusterRegion}
 	}
 	return []string{"fsn1", "nbg1", "hel1"}
-}
-
-func (*Hetzner) PricingSourceSummary() interface{} {
-	return nil
 }
