@@ -199,6 +199,9 @@ const OVHProvider = "OVH"
 // STACKITProvider describes the provider STACKIT
 const STACKITProvider = "STACKIT"
 
+// HetznerProvider describes the provider Hetzner Cloud
+const HetznerProvider = "Hetzner"
+
 // NilProvider describes unknown provider
 const NilProvider = "-"
 
@@ -225,6 +228,8 @@ func ParseProvider(str string) string {
 		return OVHProvider
 	case "stackit", "ske":
 		return STACKITProvider
+	case "hetzner", "hcloud", "hetzner-cloud":
+		return HetznerProvider
 	default:
 		return NilProvider
 	}

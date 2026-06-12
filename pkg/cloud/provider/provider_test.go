@@ -4,8 +4,11 @@ import (
 	"testing"
 
 	"github.com/opencost/opencost/core/pkg/clustercache"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/core/pkg/storage"
+	"github.com/opencost/opencost/pkg/cloud/hetzner"
 	"github.com/opencost/opencost/pkg/config"
+	"github.com/opencost/opencost/pkg/env"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -87,6 +90,108 @@ func TestProviderConfigUpdateFromMapPreservesHourlyPrices(t *testing.T) {
 	if updated.Storage != "0.00005479452" {
 		t.Errorf("Storage = %q, want hourly value %q", updated.Storage, "0.00005479452")
 	}
+}
+
+func TestGetClusterPropertiesDetectsHetznerProviderID(t *testing.T) {
+	node := &clustercache.Node{
+		SpecProviderID: "hcloud://123456",
+		Labels: map[string]string{
+			v1.LabelTopologyRegion: "fsn1",
+		},
+	}
+
+	cp := getClusterProperties(node)
+
+	if cp.provider != opencost.HetznerProvider {
+		t.Errorf("provider = %q, want %q", cp.provider, opencost.HetznerProvider)
+	}
+	if cp.configFileName != "hetzner.json" {
+		t.Errorf("configFileName = %q, want %q", cp.configFileName, "hetzner.json")
+	}
+	if cp.region != "fsn1" {
+		t.Errorf("region = %q, want %q", cp.region, "fsn1")
+	}
+}
+
+func TestNewProviderFallsBackForHetznerProviderIDByDefault(t *testing.T) {
+	t.Setenv(env.KubernetesResourceAccessEnvVar, "false")
+
+	confMan := config.NewConfigFileManager(storage.NewMemoryStorage())
+	prov, err := NewProvider(fakeProviderCache{
+		nodes: []*clustercache.Node{
+			{
+				SpecProviderID: "hcloud://123456",
+				Labels: map[string]string{
+					v1.LabelTopologyRegion: "fsn1",
+				},
+			},
+		},
+	}, "", confMan)
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+
+	if _, ok := prov.(*CustomProvider); !ok {
+		t.Fatalf("provider type = %T, want *CustomProvider", prov)
+	}
+}
+
+func TestNewProviderUsesHetznerProviderWithExplicitOptIn(t *testing.T) {
+	t.Setenv(env.KubernetesResourceAccessEnvVar, "false")
+	t.Setenv(env.HetznerNativeProviderEnabledEnvVar, "true")
+
+	confMan := config.NewConfigFileManager(storage.NewMemoryStorage())
+	prov, err := NewProvider(fakeProviderCache{
+		nodes: []*clustercache.Node{
+			{
+				SpecProviderID: "hcloud://123456",
+				Labels: map[string]string{
+					v1.LabelTopologyRegion: "fsn1",
+				},
+			},
+		},
+	}, "", confMan)
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+
+	if _, ok := prov.(*hetzner.Hetzner); !ok {
+		t.Fatalf("provider type = %T, want *hetzner.Hetzner", prov)
+	}
+}
+
+func TestNewProviderUsesHetznerCloudProviderOverrideWithExplicitOptIn(t *testing.T) {
+	t.Setenv(env.KubernetesResourceAccessEnvVar, "false")
+	t.Setenv(env.HetznerNativeProviderEnabledEnvVar, "true")
+	t.Setenv(env.CloudProviderVar, "hetzner")
+
+	confMan := config.NewConfigFileManager(storage.NewMemoryStorage())
+	prov, err := NewProvider(fakeProviderCache{
+		nodes: []*clustercache.Node{
+			{
+				SpecProviderID: "baremetal://node-1",
+				Labels: map[string]string{
+					v1.LabelTopologyRegion: "hel1",
+				},
+			},
+		},
+	}, "", confMan)
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+
+	if _, ok := prov.(*hetzner.Hetzner); !ok {
+		t.Fatalf("provider type = %T, want *hetzner.Hetzner", prov)
+	}
+}
+
+type fakeProviderCache struct {
+	clustercache.ClusterCache
+	nodes []*clustercache.Node
+}
+
+func (f fakeProviderCache) GetAllNodes() []*clustercache.Node {
+	return f.nodes
 }
 
 func TestCustomProviderGetKeyDetectsGPUCapacity(t *testing.T) {

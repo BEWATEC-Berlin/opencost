@@ -17,6 +17,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/digitalocean"
 	"github.com/opencost/opencost/pkg/cloud/gcp"
+	"github.com/opencost/opencost/pkg/cloud/hetzner"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/oracle"
 	"github.com/opencost/opencost/pkg/cloud/otc"
@@ -97,6 +98,10 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 	// If provider is DEFAULT, check for explicitly set cloud provider from environment variable
 	envProvider := env.GetCloudProvider()
 	if cp.provider == "DEFAULT" && envProvider != "" {
+		parsedEnvProvider := opencost.ParseProvider(envProvider)
+		if parsedEnvProvider != opencost.NilProvider {
+			envProvider = parsedEnvProvider
+		}
 		log.Infof("Using cloud provider from environment variable: %s", envProvider)
 		cp.provider = envProvider
 		switch envProvider {
@@ -118,6 +123,8 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 			cp.configFileName = "ovh.json"
 		case opencost.STACKITProvider:
 			cp.configFileName = "stackit.json"
+		case opencost.HetznerProvider:
+			cp.configFileName = "hetzner.json"
 		case opencost.CSVProvider:
 			cp.configFileName = "default.json"
 		}
@@ -240,6 +247,23 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 			Clientset:             cache,
 			ClusterManagementCost: 0.0,
 		}, nil
+	case opencost.HetznerProvider:
+		if !env.IsHetznerNativeProviderEnabled() {
+			log.Warn("Hetzner provider detected, but native pricing is not fully implemented; falling back to custom pricing")
+			return &CustomProvider{
+				Clientset:        cache,
+				ClusterRegion:    cp.region,
+				ClusterAccountID: cp.accountID,
+				Config:           NewProviderConfig(config, cp.configFileName),
+			}, nil
+		}
+		log.Info("Found ProviderID starting with \"hcloud\", using Hetzner Provider")
+		return &hetzner.Hetzner{
+			Clientset:        cache,
+			ClusterRegion:    cp.region,
+			ClusterAccountID: cp.accountID,
+			Config:           NewProviderConfig(config, cp.configFileName),
+		}, nil
 	default:
 		log.Info("Unsupported provider, falling back to default")
 		return &CustomProvider{
@@ -323,6 +347,10 @@ func getClusterProperties(node *clustercache.Node) clusterProperties {
 		log.Debug("using DigitalOcean provider")
 		cp.provider = opencost.DigitalOceanProvider
 		cp.configFileName = "digitalocean.json"
+	} else if strings.HasPrefix(providerID, "hcloud://") {
+		log.Debug("using Hetzner provider")
+		cp.provider = opencost.HetznerProvider
+		cp.configFileName = "hetzner.json"
 	} else if strings.HasPrefix(providerID, "stackit") || strings.Contains(providerID, "stackit") {
 		log.Debug("using STACKIT provider")
 		cp.provider = opencost.STACKITProvider
