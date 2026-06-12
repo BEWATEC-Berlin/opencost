@@ -280,6 +280,7 @@ func TestPVPricingRespectsGrossCurrencyMode(t *testing.T) {
 
 	pv, err := provider.PVPricing(&hetznerPVKey{
 		StorageClassName: "hcloud-volumes",
+		ProviderID:       "hcloud://10",
 		Region:           "fsn1",
 	})
 	if err != nil {
