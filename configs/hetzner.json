@@ -1,0 +1,18 @@
+{
+  "provider": "Hetzner",
+  "currencyCode": "EUR",
+  "description": "Hetzner Cloud default pricing placeholder. Native provider pricing is loaded from the Hetzner Cloud API.",
+  "CPU": "0",
+  "spotCPU": "0",
+  "RAM": "0",
+  "spotRAM": "0",
+  "GPU": "0",
+  "spotGPU": "0",
+  "storage": "0",
+  "zoneNetworkEgress": "0",
+  "regionNetworkEgress": "0",
+  "internetNetworkEgress": "0",
+  "natGatewayEgress": "0",
+  "natGatewayIngress": "0",
+  "defaultLBPrice": "0"
+}
