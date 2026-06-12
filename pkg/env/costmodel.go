@@ -49,6 +49,8 @@ const (
 	OVHSubsidiaryEnvVar    = "OVH_SUBSIDIARY"
 	OVHMonthlyNodepoolsVar = "OVH_MONTHLY_NODEPOOLS"
 
+	HetznerNativeProviderEnabledEnvVar = "ENABLE_HETZNER_NATIVE_PROVIDER"
+
 	ClusterProfileEnvVar    = "CLUSTER_PROFILE"
 	RemoteEnabledEnvVar     = "REMOTE_WRITE_ENABLED"
 	RemotePWEnvVar          = "REMOTE_WRITE_PASSWORD"
@@ -298,6 +300,10 @@ func IsUseCSVProvider() bool {
 // whether or not the use of a custom cost provider is enabled.
 func IsUseCustomProvider() bool {
 	return env.GetBool(UseCustomProviderEnvVar, false)
+}
+
+func IsHetznerNativeProviderEnabled() bool {
+	return env.GetBool(HetznerNativeProviderEnabledEnvVar, false)
 }
 
 // GetCSVRegion returns the environment variable value for CSVRegionEnvVar which represents the

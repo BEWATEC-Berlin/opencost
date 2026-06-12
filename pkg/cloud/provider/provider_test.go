@@ -113,8 +113,32 @@ func TestGetClusterPropertiesDetectsHetznerProviderID(t *testing.T) {
 	}
 }
 
-func TestNewProviderDetectsHetznerProviderID(t *testing.T) {
+func TestNewProviderFallsBackForHetznerProviderIDByDefault(t *testing.T) {
 	t.Setenv(env.KubernetesResourceAccessEnvVar, "false")
+
+	confMan := config.NewConfigFileManager(storage.NewMemoryStorage())
+	prov, err := NewProvider(fakeProviderCache{
+		nodes: []*clustercache.Node{
+			{
+				SpecProviderID: "hcloud://123456",
+				Labels: map[string]string{
+					v1.LabelTopologyRegion: "fsn1",
+				},
+			},
+		},
+	}, "", confMan)
+	if err != nil {
+		t.Fatalf("NewProvider returned error: %v", err)
+	}
+
+	if _, ok := prov.(*CustomProvider); !ok {
+		t.Fatalf("provider type = %T, want *CustomProvider", prov)
+	}
+}
+
+func TestNewProviderUsesHetznerProviderWithExplicitOptIn(t *testing.T) {
+	t.Setenv(env.KubernetesResourceAccessEnvVar, "false")
+	t.Setenv(env.HetznerNativeProviderEnabledEnvVar, "true")
 
 	confMan := config.NewConfigFileManager(storage.NewMemoryStorage())
 	prov, err := NewProvider(fakeProviderCache{
@@ -136,8 +160,9 @@ func TestNewProviderDetectsHetznerProviderID(t *testing.T) {
 	}
 }
 
-func TestNewProviderUsesHetznerCloudProviderOverride(t *testing.T) {
+func TestNewProviderUsesHetznerCloudProviderOverrideWithExplicitOptIn(t *testing.T) {
 	t.Setenv(env.KubernetesResourceAccessEnvVar, "false")
+	t.Setenv(env.HetznerNativeProviderEnabledEnvVar, "true")
 	t.Setenv(env.CloudProviderVar, "hetzner")
 
 	confMan := config.NewConfigFileManager(storage.NewMemoryStorage())

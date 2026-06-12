@@ -248,6 +248,15 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 			ClusterManagementCost: 0.0,
 		}, nil
 	case opencost.HetznerProvider:
+		if !env.IsHetznerNativeProviderEnabled() {
+			log.Warn("Hetzner provider detected, but native pricing is not fully implemented; falling back to custom pricing")
+			return &CustomProvider{
+				Clientset:        cache,
+				ClusterRegion:    cp.region,
+				ClusterAccountID: cp.accountID,
+				Config:           NewProviderConfig(config, cp.configFileName),
+			}, nil
+		}
 		log.Info("Found ProviderID starting with \"hcloud\", using Hetzner Provider")
 		return &hetzner.Hetzner{
 			Clientset:        cache,
