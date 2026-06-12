@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/opencost/opencost/core/pkg/clustercache"
@@ -19,6 +21,12 @@ import (
 )
 
 const HetznerCloudPricingSource = "Hetzner Cloud Pricing"
+
+const (
+	hcloudProviderIDPrefix = "hcloud://"
+	hetznerNodeUsageType   = "hetzner-cloud"
+	gibibyte               = 1024 * 1024 * 1024
+)
 
 type Hetzner struct {
 	Clientset               clustercache.ClusterCache
@@ -112,8 +120,157 @@ func (*Hetzner) GetOrphanedResources() ([]models.OrphanedResource, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (*Hetzner) NodePricing(models.Key) (*models.Node, models.PricingMetadata, error) {
-	return nil, models.PricingMetadata{}, errors.New("not implemented")
+func (h *Hetzner) NodePricing(key models.Key) (*models.Node, models.PricingMetadata, error) {
+	meta := hetznerPricingMetadata("net")
+	if key == nil {
+		return nil, meta, fmt.Errorf("Hetzner node pricing: nil node key")
+	}
+
+	serverID, err := parseHCloudServerID(key.ID())
+	if err != nil {
+		return nil, meta, err
+	}
+
+	h.DownloadPricingDataLock.RLock()
+	defer h.DownloadPricingDataLock.RUnlock()
+	if h.pricingData == nil {
+		return nil, meta, fmt.Errorf("Hetzner node pricing: pricing cache is empty")
+	}
+	meta = hetznerPricingMetadata(h.pricingData.CurrencyMode)
+
+	server, err := h.resolveCachedServer(h.pricingData, serverID)
+	if err != nil {
+		return nil, meta, err
+	}
+	if strings.TrimSpace(server.Type) == "" {
+		return nil, meta, fmt.Errorf("Hetzner node pricing: server ID %d missing server type", serverID)
+	}
+	if strings.TrimSpace(server.Location) == "" {
+		return nil, meta, fmt.Errorf("Hetzner node pricing: server ID %d missing server location", serverID)
+	}
+
+	priceKey := locationTypeKey{Location: server.Location, Type: server.Type}
+	price, ok := h.pricingData.ServerPrices[priceKey]
+	if !ok {
+		return nil, meta, fmt.Errorf("Hetzner node pricing: server ID %d missing server price for type %q in location %q", serverID, server.Type, server.Location)
+	}
+
+	hourlyCost := price.NetHourly
+	if h.pricingData.CurrencyMode == "gross" {
+		hourlyCost = price.GrossHourly
+	}
+
+	vcpuCost, ramCost, err := splitHetznerNodeCost(hourlyCost, server.VCPU, server.RAMGiB)
+	if err != nil {
+		return nil, meta, fmt.Errorf("Hetzner node pricing: server ID %d invalid server resources: %w", serverID, err)
+	}
+
+	return &models.Node{
+		Cost:         formatHetznerFloat(hourlyCost),
+		VCPU:         strconv.FormatInt(server.VCPU, 10),
+		RAM:          formatHetznerFloat(server.RAMGiB),
+		RAMBytes:     strconv.FormatInt(int64(math.Round(server.RAMGiB*gibibyte)), 10),
+		VCPUCost:     formatHetznerFloat(vcpuCost),
+		RAMCost:      formatHetznerFloat(ramCost),
+		InstanceType: server.Type,
+		Region:       server.Location,
+		ProviderID:   key.ID(),
+		UsageType:    hetznerNodeUsageType,
+		PricingType:  models.Api,
+		ArchType:     hetznerKeyArch(key),
+	}, meta, nil
+}
+
+func parseHCloudServerID(providerID string) (int64, error) {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return 0, fmt.Errorf("Hetzner node pricing: empty provider ID")
+	}
+	if !strings.HasPrefix(providerID, hcloudProviderIDPrefix) {
+		return 0, fmt.Errorf("Hetzner node pricing: expected hcloud:// provider ID, got %q", providerID)
+	}
+
+	rawID := strings.TrimPrefix(providerID, hcloudProviderIDPrefix)
+	if rawID == "" {
+		return 0, fmt.Errorf("Hetzner node pricing: empty server ID in provider ID %q", providerID)
+	}
+	serverID, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("Hetzner node pricing: parse server ID %q: %w", rawID, err)
+	}
+	if serverID <= 0 {
+		return 0, fmt.Errorf("Hetzner node pricing: server ID %d must be positive", serverID)
+	}
+	return serverID, nil
+}
+
+func (h *Hetzner) resolveCachedServer(data *HetznerPricingData, serverID int64) (HetznerServer, error) {
+	project := strings.TrimSpace(h.ClusterAccountID)
+	var matches []HetznerServer
+	for key, server := range data.Servers {
+		if key.ID == serverID {
+			matches = append(matches, server)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return HetznerServer{}, fmt.Errorf("Hetzner node pricing: server ID %d not found in cached Hetzner servers", serverID)
+	case 1:
+		return matches[0], nil
+	default:
+		if project != "" {
+			server, ok := data.Servers[projectResourceKey{Project: project, ID: serverID}]
+			if ok {
+				return server, nil
+			}
+			return HetznerServer{}, fmt.Errorf("Hetzner node pricing: server ID %d matched multiple Hetzner projects, but no match was found for configured project %q", serverID, project)
+		}
+		return HetznerServer{}, fmt.Errorf("Hetzner node pricing: server ID %d matched multiple Hetzner projects; set ClusterAccountID to the Hetzner project name", serverID)
+	}
+}
+
+func splitHetznerNodeCost(hourlyCost float64, vcpu int64, ramGiB float64) (float64, float64, error) {
+	if math.IsNaN(hourlyCost) || math.IsInf(hourlyCost, 0) {
+		return 0, 0, fmt.Errorf("invalid hourly cost %f", hourlyCost)
+	}
+	if vcpu <= 0 {
+		return 0, 0, fmt.Errorf("invalid vCPU %d", vcpu)
+	}
+	if ramGiB <= 0 || math.IsNaN(ramGiB) || math.IsInf(ramGiB, 0) {
+		return 0, 0, fmt.Errorf("invalid RAM GiB %f", ramGiB)
+	}
+
+	// Hetzner exposes a single server hourly price. To keep allocation semantics
+	// stable and auditable, split that price into equal CPU and RAM cost pools,
+	// then divide each pool by the server's resource quantity. This guarantees:
+	// VCPUCost*VCPU + RAMCost*RAMGiB == Cost, subject to float precision.
+	return (hourlyCost * 0.5) / float64(vcpu), (hourlyCost * 0.5) / ramGiB, nil
+}
+
+func hetznerPricingMetadata(rawCurrencyMode string) models.PricingMetadata {
+	currencyMode := "net"
+	if strings.TrimSpace(rawCurrencyMode) != "" {
+		currencyMode = strings.TrimSpace(rawCurrencyMode)
+	}
+	return models.PricingMetadata{
+		Currency: "EUR",
+		Source:   fmt.Sprintf("%s (%s)", HetznerCloudPricingSource, currencyMode),
+	}
+}
+
+func hetznerKeyArch(key models.Key) string {
+	hk, ok := key.(*hetznerKey)
+	if !ok || hk.Labels == nil {
+		return ""
+	}
+	if arch := hk.Labels["kubernetes.io/arch"]; arch != "" {
+		return arch
+	}
+	return hk.Labels["beta.kubernetes.io/arch"]
+}
+
+func formatHetznerFloat(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
 func (*Hetzner) GpuPricing(map[string]string) (string, error) {
