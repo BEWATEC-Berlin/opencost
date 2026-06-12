@@ -807,7 +807,7 @@ func (d *HetznerPricingData) Summary() HetznerPricingSummary {
 }
 
 func bytesToTB(bytes uint64) float64 {
-	return float64(bytes) / 1_000_000_000_000
+	return float64(bytes) / hetznerBytesPerTB
 }
 
 func billableTrafficTB(outgoing, included uint64) float64 {

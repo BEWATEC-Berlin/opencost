@@ -5,8 +5,11 @@ package models
 // type LBKey interface {
 // }
 
-// Network is the interface by which the provider and cost model communicate network egress prices.
-// The provider will best-effort try to fill out this struct.
+// Network is the struct by which the provider and cost model communicate
+// network prices. Each cost field is expressed as provider currency per GiB of
+// network usage. The cost model multiplies these values by NetworkGiBResult
+// usage vectors, so providers with decimal GB/TB pricing APIs must convert to
+// GiB before returning values here.
 type Network struct {
 	ZoneNetworkEgressCost     float64
 	RegionNetworkEgressCost   float64

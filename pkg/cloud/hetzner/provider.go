@@ -28,6 +28,7 @@ const (
 	hcloudCSIDriver        = "csi.hetzner.cloud"
 	hcloudStorageClass     = "hcloud-volumes"
 	hetznerNodeUsageType   = "hetzner-cloud"
+	hetznerBytesPerTB      = 1_000_000_000_000
 	gibibyte               = 1024 * 1024 * 1024
 )
 
@@ -404,8 +405,34 @@ func (h *Hetzner) resolveCachedVolume(data *HetznerPricingData, volumeID int64) 
 	}
 }
 
-func (*Hetzner) NetworkPricing() (*models.Network, error) {
-	return &models.Network{}, nil
+func (h *Hetzner) NetworkPricing() (*models.Network, error) {
+	h.DownloadPricingDataLock.RLock()
+	defer h.DownloadPricingDataLock.RUnlock()
+
+	if h.pricingData == nil {
+		return nil, fmt.Errorf("Hetzner network pricing: pricing cache is empty")
+	}
+	if len(h.pricingData.ServerTrafficPrices) == 0 {
+		return nil, fmt.Errorf("Hetzner network pricing: server traffic pricing cache is empty")
+	}
+
+	pricePerTB, ok := cheapestHetznerTrafficPrice(h.pricingData.ServerTrafficPrices, h.pricingData.CurrencyMode)
+	if !ok {
+		return nil, fmt.Errorf("Hetzner network pricing: server traffic pricing cache has no valid prices")
+	}
+
+	// OpenCost multiplies these prices by Prometheus network usage in GiB.
+	// Hetzner's pricing API reports internet overage in decimal TB, so convert
+	// the published overage rate to the OpenCost per-GiB unit. Resource traffic
+	// counters and included monthly pools stay outside native pod allocation.
+	internetEgressPerGiB := hetznerTrafficPerTBToGiB(pricePerTB)
+	return &models.Network{
+		ZoneNetworkEgressCost:     0,
+		RegionNetworkEgressCost:   0,
+		InternetNetworkEgressCost: internetEgressPerGiB,
+		NatGatewayEgressCost:      0,
+		NatGatewayIngressCost:     0,
+	}, nil
 }
 
 // LoadBalancerPricing has no OpenCost service-specific key to inspect, so the
@@ -565,6 +592,31 @@ func cheapestHetznerLoadBalancerCost(prices map[locationTypeKey]HetznerHourlyPri
 		}
 	}
 	return bestCost, found
+}
+
+func cheapestHetznerTrafficPrice(prices map[locationTypeKey]HetznerTrafficPrice, currencyMode string) (float64, bool) {
+	var bestKey locationTypeKey
+	var bestCost float64
+	found := false
+	for key, price := range prices {
+		cost := price.NetPerTB
+		if currencyMode == "gross" {
+			cost = price.GrossPerTB
+		}
+		if cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
+			continue
+		}
+		if !found || cost < bestCost || (cost == bestCost && compareLocationTypeKey(key, bestKey) < 0) {
+			bestCost = cost
+			bestKey = key
+			found = true
+		}
+	}
+	return bestCost, found
+}
+
+func hetznerTrafficPerTBToGiB(pricePerTB float64) float64 {
+	return pricePerTB / (hetznerBytesPerTB / float64(gibibyte))
 }
 
 func compareLocationTypeKey(a, b locationTypeKey) int {
