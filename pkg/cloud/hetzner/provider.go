@@ -134,8 +134,13 @@ func (h *Hetzner) PVPricing(pvk models.PVKey) (*models.PV, error) {
 		return &models.PV{}, nil
 	}
 
+	cost := volumePrice.NetPerGBHour
+	if h.pricingData.CurrencyMode == "gross" {
+		cost = volumePrice.GrossPerGBHour
+	}
+
 	return &models.PV{
-		Cost:   strconv.FormatFloat(volumePrice.NetPerGBHour, 'f', -1, 64),
+		Cost:   strconv.FormatFloat(cost, 'f', -1, 64),
 		Class:  pvk.GetStorageClass(),
 		Region: pvk.Features(),
 	}, nil

@@ -270,6 +270,26 @@ func TestPricingSourceSummaryAndStatusDoNotLeakSecrets(t *testing.T) {
 	}
 }
 
+func TestPVPricingRespectsGrossCurrencyMode(t *testing.T) {
+	provider := newFakeProvider(&fakeProjectClient{pricing: testHetznerPricing()}, []HetznerProject{{Name: "prod", Token: "prod-token"}})
+	provider.ConfigData.CurrencyMode = "gross"
+
+	if err := provider.DownloadPricingData(); err != nil {
+		t.Fatalf("DownloadPricingData() error = %v", err)
+	}
+
+	pv, err := provider.PVPricing(&hetznerPVKey{
+		StorageClassName: "hcloud-volumes",
+		Region:           "fsn1",
+	})
+	if err != nil {
+		t.Fatalf("PVPricing() error = %v", err)
+	}
+	if got, want := pv.Cost, "0.00007753424657534247"; got != want {
+		t.Fatalf("PV cost = %q, want gross per GB hour %q", got, want)
+	}
+}
+
 func TestCacheReadsAreConcurrencySafe(t *testing.T) {
 	provider := newFakeProvider(&fakeProjectClient{pricing: testHetznerPricing(), servers: []*hcloud.Server{testServer(100, "worker")}}, []HetznerProject{{Name: "prod", Token: "prod-token"}})
 	if err := provider.DownloadPricingData(); err != nil {
@@ -277,18 +297,26 @@ func TestCacheReadsAreConcurrencySafe(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
+	errCh := make(chan error, 20*50)
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 50; j++ {
-				_, _ = provider.AllNodePricing()
+				if _, err := provider.AllNodePricing(); err != nil {
+					errCh <- err
+					return
+				}
 				_ = provider.PricingSourceSummary()
 				_ = provider.PricingSourceStatus()
 			}
 		}()
 	}
 	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatalf("concurrent read returned error: %v", err)
+	}
 }
 
 func newFakeProvider(client *fakeProjectClient, projects []HetznerProject) *Hetzner {

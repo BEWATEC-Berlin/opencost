@@ -39,6 +39,7 @@ type HetznerInclude struct {
 
 type HetznerPricingData struct {
 	LoadedAt                  time.Time
+	CurrencyMode              string
 	Projects                  []string
 	ServerPrices              map[locationTypeKey]HetznerHourlyPrice
 	VolumePrices              map[string]HetznerVolumePrice
@@ -181,10 +182,12 @@ func (h *Hetzner) DownloadPricingData() error {
 		return err
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 	include := effectiveInclude(cfg.Include)
 	next := newHetznerPricingData()
 	next.LoadedAt = time.Now().UTC()
+	next.CurrencyMode = cfg.CurrencyMode
 
 	for _, project := range cfg.Projects {
 		if err := h.fetchProject(ctx, next, project, include); err != nil {
@@ -735,6 +738,7 @@ func (d *HetznerPricingData) Clone() *HetznerPricingData {
 	}
 	clone := newHetznerPricingData()
 	clone.LoadedAt = d.LoadedAt
+	clone.CurrencyMode = d.CurrencyMode
 	clone.Projects = append([]string(nil), d.Projects...)
 	for key, value := range d.ServerPrices {
 		clone.ServerPrices[key] = value
