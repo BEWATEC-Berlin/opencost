@@ -101,3 +101,35 @@ func TestIsMCPServerEnabled_True(t *testing.T) {
 		t.Fatalf("expected true when env var set to true, got %v", got)
 	}
 }
+
+func TestHetznerNativeProviderEnvDefaults(t *testing.T) {
+	t.Setenv(HetznerNativeProviderEnabledEnvVar, "")
+	t.Setenv(HetznerConfigPathEnvVar, "")
+	t.Setenv(HetznerAPITokenEnvVar, "")
+
+	if got := IsHetznerNativeProviderEnabled(); got {
+		t.Fatalf("IsHetznerNativeProviderEnabled() = %v, want false", got)
+	}
+	if got := GetHetznerConfigPath(); got != "" {
+		t.Fatalf("GetHetznerConfigPath() = %q, want empty", got)
+	}
+	if got := GetHetznerAPIToken(); got != "" {
+		t.Fatalf("GetHetznerAPIToken() = %q, want empty", got)
+	}
+}
+
+func TestHetznerNativeProviderEnvValues(t *testing.T) {
+	t.Setenv(HetznerNativeProviderEnabledEnvVar, "true")
+	t.Setenv(HetznerConfigPathEnvVar, "/var/secrets/hetzner.json")
+	t.Setenv(HetznerAPITokenEnvVar, "test-token")
+
+	if got := IsHetznerNativeProviderEnabled(); !got {
+		t.Fatalf("IsHetznerNativeProviderEnabled() = %v, want true", got)
+	}
+	if got := GetHetznerConfigPath(); got != "/var/secrets/hetzner.json" {
+		t.Fatalf("GetHetznerConfigPath() = %q, want configured path", got)
+	}
+	if got := GetHetznerAPIToken(); got != "test-token" {
+		t.Fatalf("GetHetznerAPIToken() = %q, want configured token", got)
+	}
+}
