@@ -251,6 +251,29 @@ func TestPricingReadsDoNotRefetchAndRefreshDoes(t *testing.T) {
 	}
 }
 
+func TestAllNodePricingReturnsJSONEncodableServerPrices(t *testing.T) {
+	provider := newFakeProvider(&fakeProjectClient{pricing: testHetznerPricing()}, []HetznerProject{{Name: "prod", Token: "prod-token"}})
+
+	if err := provider.DownloadPricingData(); err != nil {
+		t.Fatalf("DownloadPricingData() error = %v", err)
+	}
+
+	pricing, err := provider.AllNodePricing()
+	if err != nil {
+		t.Fatalf("AllNodePricing() error = %v", err)
+	}
+	payload, err := json.Marshal(pricing)
+	if err != nil {
+		t.Fatalf("AllNodePricing() returned non-JSON-encodable data: %v", err)
+	}
+	if strings.Contains(string(payload), "prod-token") {
+		t.Fatalf("AllNodePricing() leaked token: %s", payload)
+	}
+	if !strings.Contains(string(payload), "fsn1/cpx21") {
+		t.Fatalf("AllNodePricing() payload = %s, want stable location/type key", payload)
+	}
+}
+
 func TestPricingSourceSummaryAndStatusDoNotLeakSecrets(t *testing.T) {
 	const credential = "hcloud-fixture-redaction-value"
 	provider := newFakeProvider(&fakeProjectClient{pricing: testHetznerPricing(), servers: []*hcloud.Server{testServer(100, "worker")}}, []HetznerProject{{Name: "prod", Token: credential}})

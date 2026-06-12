@@ -211,9 +211,17 @@ func (h *Hetzner) AllNodePricing() (interface{}, error) {
 		return nil, err
 	}
 	if data == nil {
-		return map[locationTypeKey]HetznerHourlyPrice{}, nil
+		return map[string]HetznerHourlyPrice{}, nil
 	}
-	return data.ServerPrices, nil
+	return serverPricesByLocationType(data.ServerPrices), nil
+}
+
+func serverPricesByLocationType(prices map[locationTypeKey]HetznerHourlyPrice) map[string]HetznerHourlyPrice {
+	result := make(map[string]HetznerHourlyPrice, len(prices))
+	for key, price := range prices {
+		result[fmt.Sprintf("%s/%s", key.Location, key.Type)] = price
+	}
+	return result
 }
 
 func (h *Hetzner) PricingSourceStatus() map[string]*models.PricingSource {
